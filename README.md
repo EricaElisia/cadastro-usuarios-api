@@ -86,7 +86,7 @@ http://localhost:3000
 
 ## Autor
 
-Projeto desenvolvido por **Érica Elisia**.
+Projeto desenvolvido por **Érica Elisia, Marcos Vinicius, Andressa Pinheiro e Julia Rufino**.
 
 
 POST
