@@ -8,6 +8,7 @@ e.preventDefault()
 const nome = document.getElementById("nome").value
 const email = document.getElementById("email").value
 const senha = document.getElementById("senha").value
+const senha2 = document.getElementById("senha2").value
 
 try{
 
@@ -16,7 +17,7 @@ method:"POST",
 headers:{
 "Content-Type":"application/json"
 },
-body:JSON.stringify({nome,email,senha})
+body:JSON.stringify({nome,email,senha,senha2})
 })
 
 const dados = await resposta.json()

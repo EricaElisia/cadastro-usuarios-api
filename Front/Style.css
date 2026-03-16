@@ -1,6 +1,6 @@
 body{
 font-family: Arial;
-background:#f4f4f4;
+background:#ff71ec;
 display:flex;
 justify-content:center;
 align-items:center;
@@ -27,7 +27,7 @@ border-radius:5px;
 button{
 width:100%;
 padding:10px;
-background:#4CAF50;
+background:#af0598;
 color:white;
 border:none;
 border-radius:5px;
@@ -35,7 +35,7 @@ cursor:pointer;
 }
 
 button:hover{
-background:#45a049;
+background:#6e01ad;
 }
 
 #mensagem{

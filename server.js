@@ -16,10 +16,10 @@ app.get("/", (req, res) => {
 // ROTA DE CADASTRO
 app.post("/cadastro", async (req, res) => {
 
-    const { nome, email, senha } = req.body;
+    const { nome, email, senha, senha2 } = req.body;
 
     // valida campos obrigatórios
-    if (!nome || !email || !senha) {
+    if (!nome || !email || !senha|| !senha2) {
         return res.status(400).json({ erro: "Todos os campos são obrigatórios" });
     }
 
@@ -33,6 +33,10 @@ app.post("/cadastro", async (req, res) => {
     // valida tamanho da senha
     if (senha.length < 8) {
         return res.status(400).json({ erro: "Senha deve ter no mínimo 8 caracteres" });
+    }
+
+    if (senha != senha2) {
+        return res.status(400).json({ erro: "Senhas não coincidem" });
     }
 
     try {
