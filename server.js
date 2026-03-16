@@ -57,9 +57,10 @@ app.post("/cadastro", async (req, res) => {
 
             db.query(sql, [nome, email, senhaHash], (erro, resultado) => {
 
-                if (erro) {
-                    return res.status(500).json({ erro: "Erro ao cadastrar usuário" });
-                }
+               if (erro) {
+                console.error(erro)
+                return res.status(500).json({ erro: "Erro ao cadastrar usuário" });
+}
 
                 res.json({ mensagem: "Usuário cadastrado com sucesso" });
 
@@ -76,4 +77,4 @@ app.post("/cadastro", async (req, res) => {
 
 app.listen(3000, () => {
     console.log("Servidor rodando na porta 3000");
-});
+}); 

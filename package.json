@@ -1,10 +1,11 @@
 {
   "name": "cadastro-usuarios",
   "version": "1.0.0",
-  "description": "",
+  "description": "Este projeto foi desenvolvido como parte de um trabalho acadêmico para implementar o requisito funcional **RF01 – Cadastro de Usuário**.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +15,14 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "mysql2": "^3.19.1"
-  }
+    "mysql2": "^3.20.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EricaElisia/cadastro-usuarios-api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/EricaElisia/cadastro-usuarios-api/issues"
+  },
+  "homepage": "https://github.com/EricaElisia/cadastro-usuarios-api#readme"
 }
