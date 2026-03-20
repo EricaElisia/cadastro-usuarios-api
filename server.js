@@ -78,6 +78,49 @@ app.post("/cadastro", async (req, res) => {
 
 });
 
+// ROTA DE LOGIN
+app.post("/login", (req, res) => {
+
+    const { email, senha } = req.body;
+
+    // valida campos
+    if (!email || !senha) {
+        return res.status(400).json({ erro: "Preencha todos os campos" });
+    }
+
+    const sql = "SELECT * FROM usuarios WHERE email = ?";
+
+    db.query(sql, [email], async (erro, resultado) => {
+
+        if (erro) {
+            return res.status(500).json({ erro: "Erro no servidor" });
+        }
+
+        if (resultado.length === 0) {
+            return res.status(400).json({ erro: "E-mail ou senha inválidos" });
+        }
+
+        const usuario = resultado[0];
+
+        // comparar senha digitada com a do banco
+        const senhaValida = await bcrypt.compare(senha, usuario.senha);
+
+        if (!senhaValida) {
+            return res.status(400).json({ erro: "E-mail ou senha inválidos" });
+        }
+
+        res.json({
+            mensagem: "Login realizado com sucesso",
+            usuario: {
+                id: usuario.id,
+                nome: usuario.nome,
+                email: usuario.email
+            }
+        });
+
+    });
+
+});
 
 app.listen(3000, () => {
     console.log("Servidor rodando na porta 3000");
