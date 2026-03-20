@@ -8,6 +8,13 @@ e.preventDefault()
 const nome = document.getElementById("nome").value
 const email = document.getElementById("email").value
 const senha = document.getElementById("senha").value
+const senha2 = document.getElementById("senha2").value
+
+if(senha !== senha2){
+mensagem.style.color="red"
+mensagem.innerText="As senhas não coincidem"
+return
+}
 
 try{
 
@@ -25,6 +32,11 @@ if(resposta.ok){
 mensagem.style.color="green"
 mensagem.innerText=dados.mensagem
 form.reset()
+
+setTimeout(()=>{
+window.location.href="login.html"
+},1000)
+
 }else{
 mensagem.style.color="red"
 mensagem.innerText=dados.erro
