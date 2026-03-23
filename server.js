@@ -75,6 +75,55 @@ app.post("/cadastro", async (req, res) => {
 });
 
 
+//---------------------------------------------------------------------------------------------------
+// Criei esse aqui pra testar o dashboard após o login, depois a gente pode tirar ou deixar pra referência
+
+app.post("/login", (req, res) => {
+
+const { email, senha } = req.body
+
+if (!email || !senha) {
+return res.status(400).json({ erro: "Preencha todos os campos" })
+}
+
+const sql = "SELECT * FROM usuarios WHERE email = ?"
+
+db.query(sql, [email], async (erro, resultado) => {
+
+if (erro) {
+return res.status(500).json({ erro: "Erro no servidor" })
+}
+
+if (resultado.length === 0) {
+return res.status(400).json({ erro: "E-mail ou senha inválidos" })
+}
+
+const usuario = resultado[0]
+
+const senhaValida = await bcrypt.compare(senha, usuario.senha)
+
+if (!senhaValida) {
+return res.status(400).json({ erro: "E-mail ou senha inválidos" })
+}
+
+res.json({
+mensagem: "Login realizado com sucesso",
+usuario: {
+id: usuario.id_usuario,
+nome: usuario.nome,
+email: usuario.email
+}
+})
+
+})
+
+})
+
+
+//---------------------------------------------------------------------------------------------------
+
+
 app.listen(3000, () => {
     console.log("Servidor rodando na porta 3000");
 }); 
+
