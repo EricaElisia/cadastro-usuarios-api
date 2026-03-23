@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard</title>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+
+<body>
+
+<header>
+
+<div>
+<h2>iNota</h2>
+<p id="boasVindas"></p>
+</div>
+<button onclick="logout()">Sair</button>
+
+</header>
+
+<div class="container">
+
+<div class="nova-tarefa">
+<input type="text" id="titulo" placeholder="Digite uma tarefa...">
+<button onclick="adicionarTarefa()">Adicionar</button>
+</div>
+
+<div class="quadro">
+
+<div class="coluna">
+<h3>Pendente</h3>
+<div id="pendente"></div>
+</div>
+
+<div class="coluna">
+<h3>Em andamento</h3>
+<div id="andamento"></div>
+</div>
+
+<div class="coluna">
+<h3>Concluído</h3>
+<div id="concluido"></div>
+</div>
+
+</div>
+
+</div>
+
+<script src="dashboard.js"></script>
+
+</body>
+</html>

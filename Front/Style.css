@@ -1,14 +1,24 @@
 body{
 font-family: Arial;
-background:#ff71ec;
+background:#f4f4f4;
 display:flex;
 justify-content:center;
 align-items:center;
 height:100vh;
 }
 
+a{
+text-decoration:none;
+color:#af0598;
+font-weight:bold;
+}
+
+a:hover{
+text-decoration:underline;
+}
+
 .container{
-background:white;
+background:rgb(255, 255, 255);
 padding:30px;
 border-radius:10px;
 box-shadow:0 0 10px rgba(0,0,0,0.2);
@@ -27,7 +37,7 @@ border-radius:5px;
 button{
 width:100%;
 padding:10px;
-background:#af0598;
+background:#4CAF50;
 color:white;
 border:none;
 border-radius:5px;
@@ -35,10 +45,11 @@ cursor:pointer;
 }
 
 button:hover{
-background:#6e01ad;
+background:#45a049;
 }
 
 #mensagem{
 margin-top:15px;
 font-weight:bold;
 }
+

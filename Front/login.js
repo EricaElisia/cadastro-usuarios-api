@@ -20,17 +20,26 @@ body:JSON.stringify({email,senha})
 
 const dados = await resposta.json()
 
-if(resposta.ok){
+console.log("RESPOSTA:", dados)
+
+if(resposta.ok && dados.usuario){
+
+console.log("SALVANDO:", dados.usuario)
+
+localStorage.setItem("usuario", JSON.stringify(dados.usuario))
+
+console.log("LOCALSTORAGE:", localStorage.getItem("usuario"))
+
 mensagem.style.color="green"
 mensagem.innerText=dados.mensagem
 
-setTimeout(()=>{
 window.location.href="dashboard.html"
-},1000)
 
 }else{
+
 mensagem.style.color="red"
 mensagem.innerText=dados.erro
+
 }
 
 }catch(erro){
