@@ -9,40 +9,53 @@
 <body>
 
 <header>
-
-<div>
-<h2>iNota</h2>
-<p id="boasVindas"></p>
-</div>
-<button onclick="logout()">Sair</button>
-
+    <div>
+        <h2>iNota</h2>
+        <p id="boasVindas"></p>
+    </div>
+    <button onclick="logout()">Sair</button>
 </header>
 
 <div class="container">
 
-<div class="nova-tarefa">
-<input type="text" id="titulo" placeholder="Digite uma tarefa...">
-<button onclick="adicionarTarefa()">Adicionar</button>
-</div>
+    <!-- FORMULÁRIO DE NOVA TAREFA -->
+    <div class="nova-tarefa">
 
-<div class="quadro">
+        <input type="text" id="titulo" placeholder="Título da tarefa">
 
-<div class="coluna">
-<h3>Pendente</h3>
-<div id="pendente"></div>
-</div>
+        <input type="text" id="descricao" placeholder="Descrição (opcional)">
 
-<div class="coluna">
-<h3>Em andamento</h3>
-<div id="andamento"></div>
-</div>
+        <input type="date" id="data">
 
-<div class="coluna">
-<h3>Concluído</h3>
-<div id="concluido"></div>
-</div>
+        <select id="prioridade">
+            <option value="baixa">Baixa</option>
+            <option value="media">Média</option>
+            <option value="alta">Alta</option>
+        </select>
 
-</div>
+        <button onclick="adicionarTarefa()">Adicionar</button>
+
+    </div>
+
+    <!-- QUADRO DE TAREFAS -->
+    <div class="quadro">
+
+        <div class="coluna">
+            <h3>Pendente</h3>
+            <div id="pendente"></div>
+        </div>
+
+        <div class="coluna">
+            <h3>Em andamento</h3>
+            <div id="andamento"></div>
+        </div>
+
+        <div class="coluna">
+            <h3>Concluído</h3>
+            <div id="concluido"></div>
+        </div>
+
+    </div>
 
 </div>
 

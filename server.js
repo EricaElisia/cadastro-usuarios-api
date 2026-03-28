@@ -12,40 +12,34 @@ app.get("/", (req, res) => {
     res.send("API de cadastro funcionando!");
 });
 
-
 // ROTA DE CADASTRO
 app.post("/cadastro", async (req, res) => {
-
     const { nome, email, senha, senha2 } = req.body;
 
-    // valida campos obrigatórios
-    if (!nome || !email || !senha|| !senha2) {
+    // Valida campos obrigatórios
+    if (!nome || !email || !senha || !senha2) {
         return res.status(400).json({ erro: "Todos os campos são obrigatórios" });
     }
 
-    // valida formato de email
+    // Valida formato de email
     const emailRegex = /\S+@\S+\.\S+/;
-
     if (!emailRegex.test(email)) {
         return res.status(400).json({ erro: "Formato de e-mail inválido" });
     }
 
-    // valida tamanho da senha
+    // Valida tamanho da senha
     if (senha.length < 8) {
         return res.status(400).json({ erro: "Senha deve ter no mínimo 8 caracteres" });
     }
 
-    if (senha != senha2) {
+    if (senha !== senha2) {
         return res.status(400).json({ erro: "Senhas não coincidem" });
     }
 
     try {
-
-        // verificar se email já existe
+        // Verificar se email já existe
         const verificarEmail = "SELECT * FROM usuarios WHERE email = ?";
-
         db.query(verificarEmail, [email], async (erro, resultado) => {
-
             if (erro) {
                 return res.status(500).json({ erro: "Erro ao verificar e-mail" });
             }
@@ -54,44 +48,34 @@ app.post("/cadastro", async (req, res) => {
                 return res.status(400).json({ erro: "E-mail já cadastrado" });
             }
 
-            // criptografar senha
+            // Criptografar senha
             const senhaHash = await bcrypt.hash(senha, 10);
 
             const sql = "INSERT INTO usuarios (nome, email, senha, status) VALUES (?, ?, ?, 'ativo')";
-
             db.query(sql, [nome, email, senhaHash], (erro, resultado) => {
-
-               if (erro) {
-                console.error(erro)
-                return res.status(500).json({ erro: "Erro ao cadastrar usuário" });
-}
-
+                if (erro) {
+                    console.error(erro);
+                    return res.status(500).json({ erro: "Erro ao cadastrar usuário" });
+                }
                 res.json({ mensagem: "Usuário cadastrado com sucesso" });
-
             });
-
         });
-
     } catch (erro) {
         res.status(500).json({ erro: "Erro interno do servidor" });
     }
-
 });
 
 // ROTA DE LOGIN
 app.post("/login", (req, res) => {
-
     const { email, senha } = req.body;
 
-    // valida campos
+    // Valida campos
     if (!email || !senha) {
         return res.status(400).json({ erro: "Preencha todos os campos" });
     }
 
     const sql = "SELECT * FROM usuarios WHERE email = ?";
-
     db.query(sql, [email], async (erro, resultado) => {
-
         if (erro) {
             return res.status(500).json({ erro: "Erro no servidor" });
         }
@@ -101,8 +85,6 @@ app.post("/login", (req, res) => {
         }
 
         const usuario = resultado[0];
-
-        // comparar senha digitada com a do banco
         const senhaValida = await bcrypt.compare(senha, usuario.senha);
 
         if (!senhaValida) {
@@ -112,65 +94,71 @@ app.post("/login", (req, res) => {
         res.json({
             mensagem: "Login realizado com sucesso",
             usuario: {
-                id: usuario.id,
+                id: usuario.id, // Verifique o nome do campo
                 nome: usuario.nome,
                 email: usuario.email
             }
         });
-
     });
-
 });
 
-//---------------------------------------------------------------------------------------------------
-// Criei esse aqui pra testar o dashboard após o login, depois a gente pode tirar ou deixar pra referência
+// ROTA PARA ADICIONAR TAREFA
+app.post("/tarefas", (req, res) => {
+    const { titulo, descricao, data, prioridade, usuario_id } = req.body;
 
-app.post("/login", (req, res) => {
+    if (!titulo) {
+        return res.status(400).json({ erro: "Título é obrigatório" });
+    }
 
-const { email, senha } = req.body
+    const hoje = new Date().toISOString().split("T")[0];
 
-if (!email || !senha) {
-return res.status(400).json({ erro: "Preencha todos os campos" })
-}
+    if (data && data < hoje) {
+        return res.status(400).json({ erro: "Data inválida" });
+    }
 
-const sql = "SELECT * FROM usuarios WHERE email = ?"
+    const sql = `
+        INSERT INTO tarefas 
+        (titulo, descricao, data_vencimento, prioridade, status, usuario_id)
+        VALUES (?, ?, ?, ?, 'pendente', ?)
+    `;
 
-db.query(sql, [email], async (erro, resultado) => {
+    db.query(sql, [titulo, descricao, data, prioridade, usuario_id], (erro) => {
+        if (erro) {
+            return res.status(500).json({ erro: "Erro ao adicionar tarefa" });
+        }
 
-if (erro) {
-return res.status(500).json({ erro: "Erro no servidor" })
-}
+        res.json({ mensagem: "Tarefa criada com sucesso" });
+    });
+});
 
-if (resultado.length === 0) {
-return res.status(400).json({ erro: "E-mail ou senha inválidos" })
-}
+// ROTA PARA OBTER TAREFAS
+app.get("/tarefas", (req, res) => {
+    const sql = "SELECT * FROM tarefas";
+    db.query(sql, (erro, resultado) => {
+        if (erro) {
+            return res.status(500).json({ erro: "Erro ao obter tarefas" });
+        }
 
-const usuario = resultado[0]
+        res.json(resultado);
+    });
+});
 
-const senhaValida = await bcrypt.compare(senha, usuario.senha)
-
-if (!senhaValida) {
-return res.status(400).json({ erro: "E-mail ou senha inválidos" })
-}
-
-res.json({
-mensagem: "Login realizado com sucesso",
-usuario: {
-id: usuario.id_usuario,
-nome: usuario.nome,
-email: usuario.email
-}
-})
-
-})
-
-})
-
-
-//---------------------------------------------------------------------------------------------------
-
-
+// Iniciar o servidor
 app.listen(3000, () => {
     console.log("Servidor rodando na porta 3000");
-}); 
+});
 
+app.put("/tarefas/:id", (req, res) => {
+    const { status } = req.body;
+    const { id } = req.params;
+
+    const sql = "UPDATE tarefas SET status = ? WHERE id_tarefa = ?";
+
+    db.query(sql, [status, id], (erro) => {
+        if (erro) {
+            return res.status(500).json({ erro: "Erro ao atualizar tarefa" });
+        }
+
+        res.json({ mensagem: "Status atualizado" });
+    });
+});
