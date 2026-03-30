@@ -94,7 +94,7 @@ app.post("/login", (req, res) => {
         res.json({
             mensagem: "Login realizado com sucesso",
             usuario: {
-                id: usuario.id, // Verifique o nome do campo
+                id: usuario.id_usuario, // Verifique o nome do campo
                 nome: usuario.nome,
                 email: usuario.email
             }
@@ -104,31 +104,48 @@ app.post("/login", (req, res) => {
 
 // ROTA PARA ADICIONAR TAREFA
 app.post("/tarefas", (req, res) => {
-    const { titulo, descricao, data, prioridade, usuario_id } = req.body;
+
+    console.log("BODY:", req.body)
+
+    const { titulo, descricao, data, prioridade, id_usuario } = req.body;
 
     if (!titulo) {
         return res.status(400).json({ erro: "Título é obrigatório" });
     }
 
-    const hoje = new Date().toISOString().split("T")[0];
+    // 🔥 VALIDAÇÃO NO BACK (permite hoje)
+    if (data) {
+        const hoje = new Date().toLocaleDateString('en-CA')
 
-    if (data && data < hoje) {
-        return res.status(400).json({ erro: "Data inválida" });
+        if (data < hoje) {
+            return res.status(400).json({ erro: "Data de vencimento inválida" });
+        }
     }
 
     const sql = `
         INSERT INTO tarefas 
-        (titulo, descricao, data_vencimento, prioridade, status, usuario_id)
+        (titulo, descricao, data_vencimento, prioridade, status, id_usuario)
         VALUES (?, ?, ?, ?, 'pendente', ?)
     `;
 
-    db.query(sql, [titulo, descricao, data, prioridade, usuario_id], (erro) => {
-        if (erro) {
-            return res.status(500).json({ erro: "Erro ao adicionar tarefa" });
-        }
+    db.query(
+        sql,
+        [
+            titulo,
+            descricao || null,
+            data || null,
+            prioridade || null,
+            id_usuario
+        ],
+        (erro) => {
+            if (erro) {
+                console.error("ERRO INSERT:", erro)
+                return res.status(500).json({ erro: "Erro ao adicionar tarefa" });
+            }
 
-        res.json({ mensagem: "Tarefa criada com sucesso" });
-    });
+            res.json({ mensagem: "Tarefa criada com sucesso" });
+        }
+    );
 });
 
 // ROTA PARA OBTER TAREFAS
@@ -152,13 +169,24 @@ app.put("/tarefas/:id", (req, res) => {
     const { status } = req.body;
     const { id } = req.params;
 
+    // validação
+    if (!status) {
+        return res.status(400).json({ erro: "Status é obrigatório" });
+    }
+
     const sql = "UPDATE tarefas SET status = ? WHERE id_tarefa = ?";
 
-    db.query(sql, [status, id], (erro) => {
+    db.query(sql, [status, id], (erro, resultado) => {
         if (erro) {
+            console.error("ERRO UPDATE:", erro); // 👈 mostra erro real no terminal
             return res.status(500).json({ erro: "Erro ao atualizar tarefa" });
         }
 
-        res.json({ mensagem: "Status atualizado" });
+        // verifica se a tarefa existe
+        if (resultado.affectedRows === 0) {
+            return res.status(404).json({ erro: "Tarefa não encontrada" });
+        }
+
+        res.json({ mensagem: "Status atualizado com sucesso" });
     });
 });

@@ -1,24 +1,35 @@
 console.log("JS carregou")
+console.log("LOCALSTORAGE:", localStorage.getItem("usuario"))
 
 window.onload = () => {
 
-    const usuario = localStorage.getItem("usuario")
+    const usuarioString = localStorage.getItem("usuario")
 
-    if(!usuario || usuario === "undefined"){
-        window.location.href="login.html"
+    if (!usuarioString) {
+        window.location.href = "login.html"
+        return
     }
 
-    const dadosUsuario = JSON.parse(usuario)
+    const usuario = JSON.parse(usuarioString)
 
-    if(dadosUsuario){
-        document.getElementById("boasVindas").innerText = "Olá, " + dadosUsuario.nome
+    if (!usuario || !usuario.id) {
+        window.location.href = "login.html"
+        return
     }
 
-    carregarTarefas() // importante
+    document.getElementById("boasVindas").innerText = "Olá, " + usuario.nome
+
+    // 🔥 define data mínima como hoje (corrigido timezone)
+    const hoje = new Date().toLocaleDateString('en-CA')
+    document.getElementById("data").setAttribute("min", hoje)
+
+    carregarTarefas()
 }
 
-// 👇 AGORA FORA DO onload
+// 🔹 ADICIONAR TAREFA
 function adicionarTarefa(){
+
+    console.log("clicou adicionar")
 
     const titulo = document.getElementById("titulo").value
     const descricao = document.getElementById("descricao").value
@@ -27,15 +38,21 @@ function adicionarTarefa(){
 
     const usuario = JSON.parse(localStorage.getItem("usuario"))
 
+    if(!usuario){
+        alert("Faça login novamente")
+        return
+    }
+
     if(!titulo){
         alert("Título obrigatório")
         return
     }
 
-    const hoje = new Date().toISOString().split("T")[0]
+    // 🔥 VALIDAÇÃO CORRETA DA DATA (permite hoje)
+    const hoje = new Date().toLocaleDateString('en-CA')
 
     if(data && data < hoje){
-        alert("Data inválida")
+        alert("A data de vencimento não pode ser anterior à data atual")
         return
     }
 
@@ -49,7 +66,7 @@ function adicionarTarefa(){
             descricao,
             data,
             prioridade,
-            id_usuario: usuario.id  
+            id_usuario: usuario.id
         })
     })
     .then(res => res.json())
@@ -58,6 +75,7 @@ function adicionarTarefa(){
     })
 }
 
+// 🔹 CARREGAR TAREFAS
 function carregarTarefas(){
     fetch("http://localhost:3000/tarefas")
     .then(res => res.json())
@@ -71,15 +89,17 @@ function carregarTarefas(){
             const div = document.createElement("div")
             div.className = "tarefa"
             div.innerText = tarefa.titulo
+
             div.onclick = () => {
-                console.log("clicou", tarefa)
                 moverTarefa(tarefa)
             }
 
             if(tarefa.status === "pendente"){
                 document.getElementById("pendente").appendChild(div)
-            }else if(tarefa.status === "andamento"){
+
+            }else if(tarefa.status === "em andamento"){
                 document.getElementById("andamento").appendChild(div)
+
             }else{
                 document.getElementById("concluido").appendChild(div)
             }
@@ -87,14 +107,17 @@ function carregarTarefas(){
     })
 }
 
+// 🔹 MOVER TAREFA
 function moverTarefa(tarefa){
 
     let novoStatus
 
     if(tarefa.status === "pendente"){
         novoStatus = "em andamento"
+
     }else if(tarefa.status === "em andamento"){
         novoStatus = "concluida"
+
     }else{
         return
     }
@@ -110,4 +133,10 @@ function moverTarefa(tarefa){
     .then(() => {
         carregarTarefas()
     })
+}
+
+// 🔹 LOGOUT
+function logout(){
+    localStorage.removeItem("usuario")
+    window.location.href = "login.html"
 }
