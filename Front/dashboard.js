@@ -114,20 +114,23 @@ function moverTarefa(tarefa){
 
     if(tarefa.status === "pendente"){
         novoStatus = "em andamento"
-
     }else if(tarefa.status === "em andamento"){
         novoStatus = "concluida"
-
     }else{
         return
     }
+
+    const usuario = JSON.parse(localStorage.getItem("usuario"));
 
     fetch(`http://localhost:3000/tarefas/${tarefa.id_tarefa}`,{
         method:"PUT",
         headers:{
             "Content-Type":"application/json"
         },
-        body: JSON.stringify({ status: novoStatus })
+        body: JSON.stringify({ 
+            status: novoStatus,
+            id_usuario: usuario.id
+        })
     })
     .then(res => res.json())
     .then(() => {

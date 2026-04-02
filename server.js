@@ -166,27 +166,100 @@ app.listen(3000, () => {
 });
 
 app.put("/tarefas/:id", (req, res) => {
-    const { status } = req.body;
+    const { status, id_usuario } = req.body;
     const { id } = req.params;
 
-    // validação
     if (!status) {
         return res.status(400).json({ erro: "Status é obrigatório" });
     }
 
-    const sql = "UPDATE tarefas SET status = ? WHERE id_tarefa = ?";
+    // 🔍 BUSCAR TAREFA
+    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?";
 
-    db.query(sql, [status, id], (erro, resultado) => {
+    db.query(buscar, [id], (erro, resultado) => {
         if (erro) {
-            console.error("ERRO UPDATE:", erro); // 👈 mostra erro real no terminal
-            return res.status(500).json({ erro: "Erro ao atualizar tarefa" });
+            return res.status(500).json({ erro: "Erro ao buscar tarefa" });
         }
 
-        // verifica se a tarefa existe
-        if (resultado.affectedRows === 0) {
+        if (resultado.length === 0) {
             return res.status(404).json({ erro: "Tarefa não encontrada" });
         }
 
-        res.json({ mensagem: "Status atualizado com sucesso" });
+        const tarefa = resultado[0];
+
+        // 🔒 VALIDA DONO
+        if (tarefa.id_usuario !== id_usuario) {
+            return res.status(403).json({ erro: "Sem permissão" });
+        }
+
+        // 🔄 ATUALIZA STATUS
+        const sql = "UPDATE tarefas SET status = ? WHERE id_tarefa = ?";
+
+        db.query(sql, [status, id], (erro, resultado) => {
+            if (erro) {
+                return res.status(500).json({ erro: "Erro ao atualizar status" });
+            }
+
+            res.json({ mensagem: "Status atualizado com sucesso" });
+        });
+    });
+});
+
+app.put("/tarefas/:id/editar", (req, res) => {
+    const { id } = req.params;
+    const { titulo, descricao, data, prioridade, id_usuario } = req.body;
+
+    if (!titulo) {
+        return res.status(400).json({ erro: "Título é obrigatório" });
+    }
+
+    if (data) {
+        const hoje = new Date().toLocaleDateString('en-CA');
+        if (data < hoje) {
+            return res.status(400).json({ erro: "Data inválida" });
+        }
+    }
+
+    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?";
+
+    db.query(buscar, [id], (erro, resultado) => {
+        if (erro) {
+            return res.status(500).json({ erro: "Erro ao buscar tarefa" });
+        }
+
+        if (resultado.length === 0) {
+            return res.status(404).json({ erro: "Tarefa não encontrada" });
+        }
+
+        const tarefa = resultado[0];
+
+        // 🔒 VERIFICA DONO
+        if (tarefa.id_usuario !== id_usuario) {
+            return res.status(403).json({ erro: "Sem permissão" });
+        }
+
+        const sql = `
+            UPDATE tarefas 
+            SET titulo = ?, descricao = ?, data_vencimento = ?, prioridade = ?
+            WHERE id_tarefa = ?
+        `;
+
+        db.query(
+            sql,
+            [
+                titulo,
+                descricao || null,
+                data || null,
+                prioridade || null,
+                id
+            ],
+            (erro) => {
+                if (erro) {
+                    return res.status(500).json({ erro: "Erro ao atualizar tarefa" });
+                }
+
+                res.json({ mensagem: "Tarefa atualizada com sucesso" });
+            }
+        );
     });
 });
