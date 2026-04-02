@@ -77,7 +77,10 @@ function adicionarTarefa(){
 
 // 🔹 CARREGAR TAREFAS
 function carregarTarefas(){
-    fetch("http://localhost:3000/tarefas")
+    const usuario = JSON.parse(localStorage.getItem("usuario"));
+
+    fetch(`http://localhost:3000/tarefas/${usuario.id}`)
+    
     .then(res => res.json())
     .then(tarefas => {
 

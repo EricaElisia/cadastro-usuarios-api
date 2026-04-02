@@ -149,9 +149,12 @@ app.post("/tarefas", (req, res) => {
 });
 
 // ROTA PARA OBTER TAREFAS
-app.get("/tarefas", (req, res) => {
-    const sql = "SELECT * FROM tarefas";
-    db.query(sql, (erro, resultado) => {
+app.get("/tarefas/:id_usuario", (req, res) => {
+    const { id_usuario } = req.params;
+
+    const sql = "SELECT * FROM tarefas WHERE id_usuario = ?";
+
+    db.query(sql, [id_usuario], (erro, resultado) => {
         if (erro) {
             return res.status(500).json({ erro: "Erro ao obter tarefas" });
         }
