@@ -93,9 +93,20 @@ function carregarTarefas(){
             div.className = "tarefa"
             div.innerText = tarefa.titulo
 
+            let clickTimer
+
             div.onclick = () => {
-                moverTarefa(tarefa)
-            }
+            clearTimeout(clickTimer)
+
+            clickTimer = setTimeout(() => {
+            moverTarefa(tarefa)
+             }, 250)
+}
+
+div.ondblclick = () => {
+    clearTimeout(clickTimer)
+    abrirEdicao(tarefa)
+}
 
             if(tarefa.status === "pendente"){
                 document.getElementById("pendente").appendChild(div)
@@ -145,4 +156,40 @@ function moverTarefa(tarefa){
 function logout(){
     localStorage.removeItem("usuario")
     window.location.href = "login.html"
+}
+
+function abrirEdicao(tarefa){
+
+const novoTitulo = prompt("Editar título:", tarefa.titulo)
+if(novoTitulo === null) return
+
+const novaDescricao = prompt("Editar descrição:", tarefa.descricao || "")
+if(novaDescricao === null) return
+
+const novaData = prompt("Editar data (YYYY-MM-DD):", tarefa.data_vencimento || "")
+if(novaData === null) return
+
+const novaPrioridade = prompt("Editar prioridade (baixa, media, alta):", tarefa.prioridade || "")
+if(novaPrioridade === null) return
+
+const usuario = JSON.parse(localStorage.getItem("usuario"))
+
+fetch(`http://localhost:3000/tarefas/${tarefa.id_tarefa}/editar`,{
+method:"PUT",
+headers:{
+"Content-Type":"application/json"
+},
+body: JSON.stringify({
+titulo: novoTitulo,
+descricao: novaDescricao,
+data: novaData,
+prioridade: novaPrioridade,
+id_usuario: usuario.id
+})
+})
+.then(res => res.json())
+.then(() => {
+carregarTarefas()
+})
+
 }
