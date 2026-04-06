@@ -58,6 +58,29 @@
 
 </div>
 
+<div id="modalEdicao" class="modal">
+  <div class="modal-content">
+    
+    <h3>Editar Tarefa</h3>
+
+    <input type="text" id="editTitulo" placeholder="Título">
+
+    <input type="text" id="editDescricao" placeholder="Descrição">
+
+    <input type="date" id="editData">
+
+    <select id="editPrioridade">
+      <option value="baixa">Baixa</option>
+      <option value="media">Média</option>
+      <option value="alta">Alta</option>
+    </select>
+
+    <button onclick="salvarEdicao()">Salvar</button>
+    <button onclick="fecharModal()">Cancelar</button>
+
+  </div>
+</div>
+
 <script src="dashboard.js"></script>
 
 </body>

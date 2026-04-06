@@ -1,5 +1,6 @@
 console.log("JS carregou")
-console.log("LOCALSTORAGE:", localStorage.getItem("usuario"))
+
+let tarefaAtual = null
 
 window.onload = () => {
 
@@ -19,7 +20,6 @@ window.onload = () => {
 
     document.getElementById("boasVindas").innerText = "Olá, " + usuario.nome
 
-    // 🔥 define data mínima como hoje (corrigido timezone)
     const hoje = new Date().toLocaleDateString('en-CA')
     document.getElementById("data").setAttribute("min", hoje)
 
@@ -29,8 +29,6 @@ window.onload = () => {
 // 🔹 ADICIONAR TAREFA
 function adicionarTarefa(){
 
-    console.log("clicou adicionar")
-
     const titulo = document.getElementById("titulo").value
     const descricao = document.getElementById("descricao").value
     const data = document.getElementById("data").value
@@ -38,21 +36,15 @@ function adicionarTarefa(){
 
     const usuario = JSON.parse(localStorage.getItem("usuario"))
 
-    if(!usuario){
-        alert("Faça login novamente")
-        return
-    }
-
     if(!titulo){
         alert("Título obrigatório")
         return
     }
 
-    // 🔥 VALIDAÇÃO CORRETA DA DATA (permite hoje)
     const hoje = new Date().toLocaleDateString('en-CA')
 
     if(data && data < hoje){
-        alert("A data de vencimento não pode ser anterior à data atual")
+        alert("Data inválida")
         return
     }
 
@@ -77,10 +69,9 @@ function adicionarTarefa(){
 
 // 🔹 CARREGAR TAREFAS
 function carregarTarefas(){
-    const usuario = JSON.parse(localStorage.getItem("usuario"));
+    const usuario = JSON.parse(localStorage.getItem("usuario"))
 
     fetch(`http://localhost:3000/tarefas/${usuario.id}`)
-    
     .then(res => res.json())
     .then(tarefas => {
 
@@ -89,24 +80,28 @@ function carregarTarefas(){
         document.getElementById("concluido").innerHTML = ""
 
         tarefas.forEach(tarefa => {
+
             const div = document.createElement("div")
             div.className = "tarefa"
-            div.innerText = tarefa.titulo
 
-            let clickTimer
+            const titulo = document.createElement("span")
+            titulo.innerText = tarefa.titulo
+
+            const menu = document.createElement("button")
+            menu.innerText = "⋮"
+            menu.className = "menu-btn"
+
+            menu.onclick = (e) => {
+                e.stopPropagation()
+                abrirEdicao(tarefa)
+            }
 
             div.onclick = () => {
-            clearTimeout(clickTimer)
+                moverTarefa(tarefa)
+            }
 
-            clickTimer = setTimeout(() => {
-            moverTarefa(tarefa)
-             }, 250)
-}
-
-div.ondblclick = () => {
-    clearTimeout(clickTimer)
-    abrirEdicao(tarefa)
-}
+            div.appendChild(titulo)
+            div.appendChild(menu)
 
             if(tarefa.status === "pendente"){
                 document.getElementById("pendente").appendChild(div)
@@ -121,20 +116,22 @@ div.ondblclick = () => {
     })
 }
 
-// 🔹 MOVER TAREFA
+// 🔹 MOVER STATUS
 function moverTarefa(tarefa){
 
     let novoStatus
 
     if(tarefa.status === "pendente"){
         novoStatus = "em andamento"
+
     }else if(tarefa.status === "em andamento"){
         novoStatus = "concluida"
+
     }else{
         return
     }
 
-    const usuario = JSON.parse(localStorage.getItem("usuario"));
+    const usuario = JSON.parse(localStorage.getItem("usuario"))
 
     fetch(`http://localhost:3000/tarefas/${tarefa.id_tarefa}`,{
         method:"PUT",
@@ -152,44 +149,62 @@ function moverTarefa(tarefa){
     })
 }
 
+// 🔹 ABRIR MODAL
+function abrirEdicao(tarefa){
+
+    tarefaAtual = tarefa
+
+    document.getElementById("editTitulo").value = tarefa.titulo
+    document.getElementById("editDescricao").value = tarefa.descricao || ""
+    document.getElementById("editData").value = tarefa.data_vencimento || ""
+    document.getElementById("editPrioridade").value = tarefa.prioridade || "baixa"
+
+    document.getElementById("modalEdicao").style.display = "block"
+}
+
+// 🔹 FECHAR MODAL
+function fecharModal(){
+    document.getElementById("modalEdicao").style.display = "none"
+}
+
+// 🔹 SALVAR EDIÇÃO
+function salvarEdicao(){
+
+    const usuario = JSON.parse(localStorage.getItem("usuario"))
+
+    const titulo = document.getElementById("editTitulo").value
+    const descricao = document.getElementById("editDescricao").value
+    const data = document.getElementById("editData").value
+    const prioridade = document.getElementById("editPrioridade").value
+
+    fetch(`http://localhost:3000/tarefas/${tarefaAtual.id_tarefa}/editar`,{
+        method:"PUT",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({
+            titulo,
+            descricao,
+            data,
+            prioridade,
+            id_usuario: usuario.id
+        })
+    })
+    .then(res => res.json())
+    .then(dados => {
+
+        if(dados.erro){
+            alert(dados.erro)
+            return
+        }
+
+        fecharModal()
+        carregarTarefas()
+    })
+}
+
 // 🔹 LOGOUT
 function logout(){
     localStorage.removeItem("usuario")
     window.location.href = "login.html"
-}
-
-function abrirEdicao(tarefa){
-
-const novoTitulo = prompt("Editar título:", tarefa.titulo)
-if(novoTitulo === null) return
-
-const novaDescricao = prompt("Editar descrição:", tarefa.descricao || "")
-if(novaDescricao === null) return
-
-const novaData = prompt("Editar data (YYYY-MM-DD):", tarefa.data_vencimento || "")
-if(novaData === null) return
-
-const novaPrioridade = prompt("Editar prioridade (baixa, media, alta):", tarefa.prioridade || "")
-if(novaPrioridade === null) return
-
-const usuario = JSON.parse(localStorage.getItem("usuario"))
-
-fetch(`http://localhost:3000/tarefas/${tarefa.id_tarefa}/editar`,{
-method:"PUT",
-headers:{
-"Content-Type":"application/json"
-},
-body: JSON.stringify({
-titulo: novoTitulo,
-descricao: novaDescricao,
-data: novaData,
-prioridade: novaPrioridade,
-id_usuario: usuario.id
-})
-})
-.then(res => res.json())
-.then(() => {
-carregarTarefas()
-})
-
 }
