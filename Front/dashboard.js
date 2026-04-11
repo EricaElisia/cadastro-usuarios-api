@@ -58,9 +58,12 @@ function adicionarTarefa(){
             descricao,
             data,
             prioridade,
+            status: window.statusSelecionado || "pendente",
             id_usuario: usuario.id
-        })
+})
     })
+
+
     .then(res => res.json())
     .then(() => {
         carregarTarefas()
@@ -92,9 +95,18 @@ function carregarTarefas(){
             menu.className = "menu-btn"
 
             menu.onclick = (e) => {
-                e.stopPropagation()
-                abrirEdicao(tarefa)
-            }
+    e.stopPropagation()
+
+    const opcao = prompt("Digite:\n1 - Editar\n2 - Excluir")
+
+    if(opcao == "1"){
+        abrirEdicao(tarefa)
+    }
+
+    if(opcao == "2"){
+        excluirTarefa(tarefa)
+    }
+}
 
             div.onclick = () => {
                 moverTarefa(tarefa)
@@ -201,6 +213,33 @@ function salvarEdicao(){
         fecharModal()
         carregarTarefas()
     })
+}
+
+function excluirTarefa(tarefa){
+
+    const confirmar = confirm("Tem certeza que deseja excluir?")
+
+    if(!confirmar) return
+
+    const usuario = JSON.parse(localStorage.getItem("usuario"))
+
+    fetch(`http://localhost:3000/tarefas/${tarefa.id_tarefa}`,{
+        method:"DELETE",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({
+            id_usuario: usuario.id
+        })
+    })
+    .then(res => res.json())
+    .then(() => {
+        carregarTarefas()
+    })
+}
+
+function abrirCriacao(status){
+    window.statusSelecionado = status
 }
 
 // 🔹 LOGOUT

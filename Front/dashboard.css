@@ -75,3 +75,19 @@ cursor:pointer;
     flex-direction: column;
     gap: 10px;
 }
+
+.titulo-coluna{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.titulo-coluna button{
+    border:none;
+    background:#31a8ac;
+    color:white;
+    border-radius:50%;
+    width:25px;
+    height:25px;
+    cursor:pointer;
+}
