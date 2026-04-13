@@ -13,17 +13,27 @@ window.onload = () => {
 
     const usuario = JSON.parse(usuarioString)
 
-    if (!usuario || !usuario.id) {
-        window.location.href = "login.html"
-        return
-    }
-
     document.getElementById("boasVindas").innerText = "Olá, " + usuario.nome
 
     const hoje = new Date().toLocaleDateString('en-CA')
     document.getElementById("data").setAttribute("min", hoje)
 
     carregarTarefas()
+
+    // 🔥 COLOCA ESSE BLOCO AQUI
+    ["pendente", "andamento", "concluido"].forEach(id => {
+
+        const coluna = document.getElementById(id)
+
+        coluna.addEventListener("dragover", (e) => {
+            e.preventDefault()
+        })
+
+        coluna.addEventListener("drop", (e) => {
+            e.preventDefault()
+            moverPorDrag(id)
+        })
+    })
 }
 
 // 🔹 ADICIONAR TAREFA
@@ -67,6 +77,8 @@ function adicionarTarefa(){
     .then(res => res.json())
     .then(() => {
         carregarTarefas()
+
+        window.statusSelecionado = null
     })
 }
 
@@ -86,6 +98,11 @@ function carregarTarefas(){
 
             const div = document.createElement("div")
             div.className = "tarefa"
+            div.draggable = true
+
+            div.addEventListener("dragstart", () => {
+                window.tarefaArrastada = tarefa
+            })
 
             const titulo = document.createElement("span")
             titulo.innerText = tarefa.titulo
@@ -240,8 +257,28 @@ function excluirTarefa(tarefa){
 
 function abrirCriacao(status){
     window.statusSelecionado = status
+    console.log("Status selecionado:", status)
 }
 
+function criarLista(status){
+
+    const nome = prompt("Nome da lista:")
+    if(!nome) return
+
+    const lista = document.createElement("div")
+    lista.className = "lista"
+
+    const titulo = document.createElement("h4")
+    titulo.innerText = nome
+
+    const container = document.createElement("div")
+    container.className = "tarefas-lista"
+
+    lista.appendChild(titulo)
+    lista.appendChild(container)
+
+    document.getElementById(status).appendChild(lista)
+}
 // 🔹 LOGOUT
 function logout(){
     localStorage.removeItem("usuario")

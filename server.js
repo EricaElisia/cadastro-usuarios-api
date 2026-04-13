@@ -107,7 +107,7 @@ app.post("/tarefas", (req, res) => {
 
     console.log("BODY:", req.body)
 
-    const { titulo, descricao, data, prioridade, id_usuario } = req.body;
+    const { titulo, descricao, data, prioridade, status, id_usuario } = req.body;
 
     if (!titulo) {
         return res.status(400).json({ erro: "Título é obrigatório" });
@@ -125,7 +125,7 @@ app.post("/tarefas", (req, res) => {
     const sql = `
         INSERT INTO tarefas 
         (titulo, descricao, data_vencimento, prioridade, status, id_usuario)
-        VALUES (?, ?, ?, ?, 'pendente', ?)
+        VALUES (?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
@@ -135,6 +135,7 @@ app.post("/tarefas", (req, res) => {
             descricao || null,
             data || null,
             prioridade || null,
+            status || "pendente",
             id_usuario
         ],
         (erro) => {
@@ -266,3 +267,40 @@ app.put("/tarefas/:id/editar", (req, res) => {
         );
     });
 });
+
+app.delete("/tarefas/:id", (req, res) => {
+
+    const { id } = req.params
+    const { id_usuario } = req.body
+
+    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?"
+
+    db.query(buscar, [id], (erro, resultado) => {
+
+        if (erro) {
+            return res.status(500).json({ erro: "Erro ao buscar tarefa" })
+        }
+
+        if (resultado.length === 0) {
+            return res.status(404).json({ erro: "Tarefa não encontrada" })
+        }
+
+        const tarefa = resultado[0]
+
+        // 🔒 VERIFICA SE É DONO
+        if (tarefa.id_usuario !== id_usuario) {
+            return res.status(403).json({ erro: "Sem permissão" })
+        }
+
+        const sql = "DELETE FROM tarefas WHERE id_tarefa = ?"
+
+        db.query(sql, [id], (erro) => {
+
+            if (erro) {
+                return res.status(500).json({ erro: "Erro ao excluir tarefa" })
+            }
+
+            res.json({ mensagem: "Tarefa excluída com sucesso" })
+        })
+    })
+})

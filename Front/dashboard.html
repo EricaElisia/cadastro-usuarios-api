@@ -26,6 +26,7 @@
         <input type="text" id="descricao" placeholder="Descrição (opcional)">
 
         <input type="date" id="data" min="">
+
         <select id="prioridade">
             <option value="baixa">Baixa</option>
             <option value="media">Média</option>
@@ -39,34 +40,43 @@
     <!-- QUADRO DE TAREFAS -->
     <div class="quadro">
 
+        <!-- COLUNA PENDENTE -->
         <div class="coluna">
             <div class="titulo-coluna">
                 <h3>Pendente</h3>
-                <button onclick="abrirCriacao('pendente')">+</button>
+                <button onclick="criarLista('pendente')">+</button>
             </div>
-            <div id="pendente"></div>
+            <div id="pendente" class="listas"></div>
         </div>
 
+        <!-- COLUNA EM ANDAMENTO -->
         <div class="coluna">
             <div class="titulo-coluna">
                 <h3>Em andamento</h3>
-                <button onclick="abrirCriacao('em andamento')">+</button>
+                <button onclick="criarLista('andamento')">+</button>
             </div>
             <div id="andamento"></div>
         </div>
 
+        <!-- COLUNA CONCLUÍDO -->
         <div class="coluna">
             <div class="titulo-coluna">
                 <h3>Concluído</h3>
-                <button onclick="abrirCriacao('concluido')">+</button>
+                <button onclick="criarLista('andamento')">+</button>
             </div>
             <div id="concluido"></div>
         </div>
 
     </div>
 
+    <!-- BOTÃO PARA CRIAR NOVA LISTA -->
+    <div style="margin-top:20px;">
+        <button onclick="criarLista()">+ Criar nova lista</button>
+    </div>
+
 </div>
 
+<!-- MODAL DE EDIÇÃO -->
 <div id="modalEdicao" class="modal">
   <div class="modal-content">
     

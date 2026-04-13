@@ -91,3 +91,18 @@ cursor:pointer;
     height:25px;
     cursor:pointer;
 }
+
+.lista {
+    background: #f4f4f4;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 8px;
+}
+
+.lista h4 {
+    margin: 0 0 5px 0;
+}
+
+.tarefas-lista {
+    min-height: 20px;
+}
