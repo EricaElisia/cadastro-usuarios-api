@@ -80,6 +80,10 @@ function adicionarTarefa(){
 
         window.statusSelecionado = null
     })
+
+    if(window.listaSelecionada){
+        window.listaSelecionada.appendChild(div)
+    }
 }
 
 // 🔹 CARREGAR TAREFAS
@@ -133,7 +137,11 @@ function carregarTarefas(){
             div.appendChild(menu)
 
             if(tarefa.status === "pendente"){
-                document.getElementById("pendente").appendChild(div)
+                if(window.listaSelecionada){
+                    window.listaSelecionada.appendChild(div)
+                }else{
+                    document.getElementById("pendente").appendChild(div)
+                }
 
             }else if(tarefa.status === "em andamento"){
                 document.getElementById("andamento").appendChild(div)
@@ -268,13 +276,42 @@ function criarLista(status){
     const lista = document.createElement("div")
     lista.className = "lista"
 
+    const header = document.createElement("div")
+    header.style.display = "flex"
+    header.style.justifyContent = "space-between"
+    header.style.alignItems = "center"
+
     const titulo = document.createElement("h4")
     titulo.innerText = nome
+
+    const btn = document.createElement("button")
+    btn.innerText = "+"
+    btn.style.cursor = "pointer"
 
     const container = document.createElement("div")
     container.className = "tarefas-lista"
 
-    lista.appendChild(titulo)
+    // 🔥 botão de criar tarefa dentro da lista
+    btn.onclick = () => {
+        window.listaSelecionada = container
+        alert("Adicione a tarefa no formulário acima")
+    }
+
+    // 🔥 clique na lista também seleciona
+    lista.onclick = () => {
+        window.listaSelecionada = container
+
+        document.querySelectorAll(".lista").forEach(l => {
+            l.style.border = "none"
+        })
+
+        lista.style.border = "2px solid #31a8ac"
+    }
+
+    header.appendChild(titulo)
+    header.appendChild(btn)
+
+    lista.appendChild(header)
     lista.appendChild(container)
 
     document.getElementById(status).appendChild(lista)
