@@ -304,3 +304,66 @@ app.delete("/tarefas/:id", (req, res) => {
         })
     })
 })
+
+app.post("/listas", (req, res) => {
+    const { nome, id_usuario } = req.body;
+
+    if (!nome) {
+        return res.status(400).json({ erro: "Nome da lista é obrigatório" });
+    }
+
+    const sql = "INSERT INTO listas (nome, id_usuario) VALUES (?, ?)";
+
+    db.query(sql, [nome, id_usuario], (erro) => {
+        if (erro) {
+            return res.status(500).json({ erro: "Erro ao criar lista" });
+        }
+
+        res.json({ mensagem: "Lista criada com sucesso" });
+    });
+});
+
+app.get("/listas/:id_usuario", (req, res) => {
+    const { id_usuario } = req.params;
+
+    const sql = "SELECT * FROM listas WHERE id_usuario = ?";
+
+    db.query(sql, [id_usuario], (erro, resultado) => {
+        if (erro) {
+            return res.status(500).json({ erro: "Erro ao buscar listas" });
+        }
+
+        res.json(resultado);
+    });
+});
+
+app.put("/tarefas/:id/mover", (req, res) => {
+    const { id } = req.params;
+    const { id_lista, id_usuario } = req.body;
+
+    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?";
+
+    db.query(buscar, [id], (erro, resultado) => {
+        if (erro) return res.status(500).json({ erro: "Erro ao buscar tarefa" });
+
+        if (resultado.length === 0) {
+            return res.status(404).json({ erro: "Tarefa não encontrada" });
+        }
+
+        const tarefa = resultado[0];
+
+        if (tarefa.id_usuario !== id_usuario) {
+            return res.status(403).json({ erro: "Sem permissão" });
+        }
+
+        const sql = "UPDATE tarefas SET id_lista = ? WHERE id_tarefa = ?";
+
+        db.query(sql, [id_lista, id], (erro) => {
+            if (erro) {
+                return res.status(500).json({ erro: "Erro ao mover tarefa" });
+            }
+
+            res.json({ mensagem: "Tarefa movida de lista" });
+        });
+    });
+});

@@ -19,6 +19,7 @@ window.onload = () => {
     document.getElementById("data").setAttribute("min", hoje)
 
     carregarTarefas()
+    carregarListas()
 
     // 🔥 COLOCA ESSE BLOCO AQUI
     ["pendente", "andamento", "concluido"].forEach(id => {
@@ -85,6 +86,7 @@ function adicionarTarefa(){
         window.listaSelecionada.appendChild(div)
     }
 }
+
 
 // 🔹 CARREGAR TAREFAS
 function carregarTarefas(){
@@ -271,50 +273,75 @@ function abrirCriacao(status){
 function criarLista(status){
 
     const nome = prompt("Nome da lista:")
-    if(!nome) return
 
-    const lista = document.createElement("div")
-    lista.className = "lista"
-
-    const header = document.createElement("div")
-    header.style.display = "flex"
-    header.style.justifyContent = "space-between"
-    header.style.alignItems = "center"
-
-    const titulo = document.createElement("h4")
-    titulo.innerText = nome
-
-    const btn = document.createElement("button")
-    btn.innerText = "+"
-    btn.style.cursor = "pointer"
-
-    const container = document.createElement("div")
-    container.className = "tarefas-lista"
-
-    // 🔥 botão de criar tarefa dentro da lista
-    btn.onclick = () => {
-        window.listaSelecionada = container
-        alert("Adicione a tarefa no formulário acima")
+    if(!nome || nome.trim() === ""){
+        alert("Nome da lista é obrigatório")
+        return
     }
 
-    // 🔥 clique na lista também seleciona
-    lista.onclick = () => {
-        window.listaSelecionada = container
+    const usuario = JSON.parse(localStorage.getItem("usuario"))
 
-        document.querySelectorAll(".lista").forEach(l => {
-            l.style.border = "none"
+    fetch("http://localhost:3000/listas", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            nome,
+            id_usuario: usuario.id
         })
+    })
+    .then(res => res.json())
+    .then(() => {
+        carregarListas()
+    })
+}
 
-        lista.style.border = "2px solid #31a8ac"
-    }
+function carregarListas(){
 
-    header.appendChild(titulo)
-    header.appendChild(btn)
+    const usuario = JSON.parse(localStorage.getItem("usuario"))
 
-    lista.appendChild(header)
-    lista.appendChild(container)
+    fetch(`http://localhost:3000/listas/${usuario.id}`)
+    .then(res => res.json())
+    .then(listas => {
 
-    document.getElementById(status).appendChild(lista)
+        const coluna = document.getElementById("pendente")
+
+        coluna.innerHTML = "" // limpa antes
+
+        listas.forEach(lista => {
+
+            const div = document.createElement("div")
+            div.className = "lista"
+
+            const titulo = document.createElement("h4")
+            titulo.innerText = lista.nome
+
+            div.appendChild(titulo)
+
+            coluna.appendChild(div)
+        })
+    })
+}
+
+function moverParaLista(id_lista){
+
+    const tarefa = window.tarefaArrastada
+    const usuario = JSON.parse(localStorage.getItem("usuario"))
+
+    fetch(`http://localhost:3000/tarefas/${tarefa.id_tarefa}/mover`,{
+        method:"PUT",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({
+            id_lista,
+            id_usuario: usuario.id
+        })
+    })
+    .then(() => {
+        carregarTarefas()
+    })
 }
 // 🔹 LOGOUT
 function logout(){
