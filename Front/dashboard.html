@@ -1,106 +1,285 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-<meta charset="UTF-8">
-<title>Dashboard</title>
-<link rel="stylesheet" href="dashboard.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | iNota</title>
+    <link rel="stylesheet" href="dashboard.css">
 </head>
-
 <body>
-
-<header>
-    <div>
-        <h2>iNota</h2>
-        <p id="boasVindas"></p>
-    </div>
-    <button onclick="logout()">Sair</button>
-</header>
-
-<div class="container">
-
-    <!-- FORMULÁRIO DE NOVA TAREFA -->
-    <div class="nova-tarefa">
-
-        <input type="text" id="titulo" placeholder="Título da tarefa">
-
-        <input type="text" id="descricao" placeholder="Descrição (opcional)">
-
-        <input type="date" id="data" min="">
-
-        <select id="prioridade">
-            <option value="baixa">Baixa</option>
-            <option value="media">Média</option>
-            <option value="alta">Alta</option>
-        </select>
-
-        <button onclick="adicionarTarefa()">Adicionar</button>
-
+    <div class="ambient-bg" aria-hidden="true">
+        <span class="orb orb-one"></span>
+        <span class="orb orb-two"></span>
+        <span class="orb orb-three"></span>
+        <span class="flow-line line-one"></span>
+        <span class="flow-line line-two"></span>
+        <span class="flow-line line-three"></span>
     </div>
 
-    <!-- QUADRO DE TAREFAS -->
-    <div class="quadro">
-
-        <!-- COLUNA PENDENTE -->
-        <div class="coluna">
-            <div class="titulo-coluna">
-                <h3>Pendente</h3>
-                <button onclick="criarLista('pendente')">+</button>
+    <header class="app-header">
+        <div class="brand">
+            <img src="assets/logo.svg" alt="Logo iNota" class="brand-logo">
+            <div>
+                <strong>iNota</strong>
+                <span>Quadro de tarefas</span>
             </div>
-            <div id="pendente" class="listas"></div>
         </div>
 
-        <!-- COLUNA EM ANDAMENTO -->
-        <div class="coluna">
-            <div class="titulo-coluna">
-                <h3>Em andamento</h3>
-                <button onclick="criarLista('andamento')">+</button>
+        <div class="header-actions">
+            <button id="themeToggle" class="theme-toggle" type="button" aria-label="Alternar tema">
+                <span></span>
+                <strong>Claro</strong>
+            </button>
+            <div class="user-pill">
+                <span id="userInitials">IN</span>
+                <div>
+                    <small>Usuário logado</small>
+                    <strong id="boasVindas">Olá</strong>
+                </div>
             </div>
-            <div id="andamento"></div>
+            <button id="logoutBtn" class="ghost-btn" type="button">Sair</button>
         </div>
+    </header>
 
-        <!-- COLUNA CONCLUÍDO -->
-        <div class="coluna">
-            <div class="titulo-coluna">
-                <h3>Concluído</h3>
-                <button onclick="criarLista('andamento')">+</button>
+    <main class="dashboard">
+        <section class="toolbar">
+            <div>
+                <p class="eyebrow">Meu quadro</p>
+                <h1>Organize prioridades, prazos e andamento.</h1>
             </div>
-            <div id="concluido"></div>
-        </div>
+            <div class="toolbar-actions">
+                <button id="openListModalBtn" class="secondary-btn" type="button">Novo quadro</button>
+                <button id="openTaskModalBtn" class="primary-btn" type="button">Nova tarefa</button>
+            </div>
+        </section>
 
+        <section class="search-dock" aria-label="Pesquisa e filtros de tarefas">
+            <form id="searchForm" class="quick-search">
+                <button class="search-icon" type="submit" aria-label="Pesquisar">⌕</button>
+                <input type="search" id="filterKeyword" placeholder="Título ou descrição">
+                <button id="advancedFiltersBtn" class="dots-btn" type="button" aria-label="Abrir filtros">•••</button>
+            </form>
+            <button id="clearFiltersBtn" class="ghost-btn compact-btn" type="button">Limpar</button>
+
+            <div id="advancedFilters" class="advanced-filters" hidden>
+                <div>
+                    <label for="filterStatus">Status</label>
+                    <select id="filterStatus">
+                        <option value="todos">Todos</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="em andamento">Em andamento</option>
+                        <option value="concluido">Concluído</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="filterPriority">Prioridade</label>
+                    <select id="filterPriority">
+                        <option value="todas">Todas</option>
+                        <option value="baixa">Baixa</option>
+                        <option value="media">Média</option>
+                        <option value="alta">Alta</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="filterStart">De</label>
+                    <input type="date" id="filterStart">
+                </div>
+                <div>
+                    <label for="filterEnd">Até</label>
+                    <input type="date" id="filterEnd">
+                </div>
+            </div>
+        </section>
+
+        <section id="kanbanBoard" class="kanban" aria-label="Quadro Kanban">
+            <article class="kanban-column" data-status="pendente">
+                <header>
+                    <div>
+                        <span class="status-dot pending"></span>
+                        <h2>Pendente</h2>
+                    </div>
+                    <strong id="count-pendente">0</strong>
+                </header>
+                <div id="pendente" class="task-list" data-status="pendente"></div>
+            </article>
+
+            <article class="kanban-column" data-status="em andamento">
+                <header>
+                    <div>
+                        <span class="status-dot progress"></span>
+                        <h2>Em andamento</h2>
+                    </div>
+                    <strong id="count-em-andamento">0</strong>
+                </header>
+                <div id="andamento" class="task-list" data-status="em andamento"></div>
+            </article>
+
+            <article class="kanban-column" data-status="concluido">
+                <header>
+                    <div>
+                        <span class="status-dot done"></span>
+                        <h2>Concluído</h2>
+                    </div>
+                    <strong id="count-concluido">0</strong>
+                </header>
+                <div id="concluido" class="task-list" data-status="concluido"></div>
+            </article>
+        </section>
+    </main>
+
+    <div id="toastArea" class="toast-area" aria-live="polite"></div>
+
+    <div id="taskModal" class="modal" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+            <button class="icon-btn close-modal" type="button" data-close-modal>&times;</button>
+            <p class="eyebrow">Tarefa</p>
+            <h2 id="taskModalTitle">Nova tarefa</h2>
+            <form id="taskForm" class="modal-form">
+                <input type="hidden" id="taskId">
+
+                <label for="taskTitulo">Título</label>
+                <input type="text" id="taskTitulo" placeholder="Ex.: finalizar relatório" required>
+
+                <label for="taskDescricao">Descrição</label>
+                <textarea id="taskDescricao" rows="4" placeholder="Detalhes, critérios ou observações"></textarea>
+
+                <div class="date-mode">
+                    <label class="radio-option">
+                        <input type="radio" name="taskDateMode" id="taskAllDay" value="all-day" checked>
+                        <span>Dia inteiro</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="taskDateMode" id="taskWithTime" value="with-time">
+                        <span>Com horário</span>
+                    </label>
+                </div>
+
+                <div class="form-grid">
+                    <div>
+                        <label for="taskStartDate">Data de início</label>
+                        <input type="date" id="taskStartDate">
+                    </div>
+                    <div>
+                        <label for="taskEndDate">Data de fim</label>
+                        <input type="date" id="taskEndDate">
+                    </div>
+                </div>
+
+                <div id="timeFields" class="form-grid time-fields" hidden>
+                    <div>
+                        <label for="taskStartTime">Hora de início</label>
+                        <input type="time" id="taskStartTime">
+                    </div>
+                    <div>
+                        <label for="taskEndTime">Hora de fim</label>
+                        <input type="time" id="taskEndTime">
+                    </div>
+                </div>
+
+                <label for="taskPrioridade">Prioridade</label>
+                <select id="taskPrioridade">
+                    <option value="baixa">Baixa</option>
+                    <option value="media">Média</option>
+                    <option value="alta">Alta</option>
+                </select>
+
+                <label for="taskStatus">Status</label>
+                <select id="taskStatus">
+                    <option value="pendente">Pendente</option>
+                    <option value="em andamento">Em andamento</option>
+                    <option value="concluido">Concluído</option>
+                </select>
+
+                <label for="taskList">Quadro</label>
+                <select id="taskList">
+                    <option value="">Quadro padrão por status</option>
+                </select>
+
+                <p id="taskFormMessage" class="modal-message"></p>
+
+                <div class="modal-actions">
+                    <button class="ghost-btn" type="button" data-close-modal>Cancelar</button>
+                    <button class="primary-btn" type="submit">Salvar tarefa</button>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <!-- BOTÃO PARA CRIAR NOVA LISTA -->
-    <div style="margin-top:20px;">
-        <button onclick="criarLista()">+ Criar nova lista</button>
+    <div id="detailsModal" class="modal" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="detailsTitle">
+            <button class="icon-btn close-modal" type="button" data-close-modal>&times;</button>
+            <p class="eyebrow">Detalhes</p>
+            <h2 id="detailsTitle"></h2>
+            <p id="detailsDescription" class="details-description"></p>
+            <div id="detailsMeta" class="details-meta"></div>
+            <div class="modal-actions">
+                <button id="detailsEditBtn" class="secondary-btn" type="button">Editar</button>
+                <button class="primary-btn" type="button" data-close-modal>Fechar</button>
+            </div>
+        </div>
     </div>
 
-</div>
+    <div id="deleteModal" class="modal" aria-hidden="true">
+        <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+            <p class="eyebrow danger">Excluir</p>
+            <h2 id="deleteTitle">Excluir tarefa?</h2>
+            <p class="details-description">Essa ação remove a tarefa do seu quadro.</p>
+            <div class="modal-actions">
+                <button class="ghost-btn" type="button" data-close-modal>Cancelar</button>
+                <button id="confirmDeleteBtn" class="danger-btn" type="button">Excluir</button>
+            </div>
+        </div>
+    </div>
 
-<!-- MODAL DE EDIÇÃO -->
-<div id="modalEdicao" class="modal">
-  <div class="modal-content">
-    
-    <h3>Editar Tarefa</h3>
+    <div id="listModal" class="modal" aria-hidden="true">
+        <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="listTitle">
+            <button class="icon-btn close-modal" type="button" data-close-modal>&times;</button>
+            <p class="eyebrow">Lista</p>
+            <h2 id="listTitle">Novo quadro</h2>
+            <form id="listForm" class="modal-form">
+                <label for="listName">Nome do quadro</label>
+                <input type="text" id="listName" placeholder="Ex.: Faculdade, Trabalho, Ideias" required>
+                <p id="listFormMessage" class="modal-message"></p>
+                <div class="modal-actions">
+                    <button class="ghost-btn" type="button" data-close-modal>Cancelar</button>
+                    <button class="primary-btn" type="submit">Criar quadro</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-    <input type="text" id="editTitulo" placeholder="Título">
+    <div id="boardSettingsModal" class="modal" aria-hidden="true">
+        <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="boardSettingsTitle">
+            <button class="icon-btn close-modal" type="button" data-close-modal>&times;</button>
+            <p class="eyebrow">Quadro</p>
+            <h2 id="boardSettingsTitle">Editar quadro</h2>
+            <form id="boardSettingsForm" class="modal-form">
+                <input type="hidden" id="boardId">
 
-    <input type="text" id="editDescricao" placeholder="Descrição">
+                <label for="boardName">Nome do quadro</label>
+                <input type="text" id="boardName" required>
 
-    <input type="date" id="editData">
+                <label for="boardColor">Cor do quadro</label>
+                <input type="color" id="boardColor" value="#7c3aed" class="color-input">
 
-    <select id="editPrioridade">
-      <option value="baixa">Baixa</option>
-      <option value="media">Média</option>
-      <option value="alta">Alta</option>
-    </select>
+                <p id="boardSettingsMessage" class="modal-message"></p>
 
-    <button onclick="salvarEdicao()">Salvar</button>
-    <button onclick="fecharModal()">Cancelar</button>
+                <div class="board-actions-grid">
+                    <button id="moveBoardLeftBtn" class="ghost-btn" type="button">Mover esquerda</button>
+                    <button id="moveBoardRightBtn" class="ghost-btn" type="button">Mover direita</button>
+                </div>
 
-  </div>
-</div>
+                <div class="modal-actions split-actions">
+                    <button id="deleteBoardBtn" class="danger-btn" type="button">Excluir quadro</button>
+                    <div>
+                        <button class="ghost-btn" type="button" data-close-modal>Cancelar</button>
+                        <button class="primary-btn" type="submit">Salvar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 
-<script src="dashboard.js"></script>
-
+    <script src="dashboard.js"></script>
 </body>
 </html>

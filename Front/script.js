@@ -1,54 +1,65 @@
-const form = document.getElementById("formCadastro")
-const mensagem = document.getElementById("mensagem")
+const API_URL = "http://localhost:3000";
 
-form.addEventListener("submit", async (e) => {
+const form = document.getElementById("formCadastro");
+const mensagem = document.getElementById("mensagem");
 
-e.preventDefault()
-
-const nome = document.getElementById("nome").value
-const email = document.getElementById("email").value
-const senha = document.getElementById("senha").value
-const senha2 = document.getElementById("senha2").value
-
-mensagem.innerText = ""
-
-if(senha !== senha2){
-mensagem.style.color = "red"
-mensagem.innerText = "As senhas não coincidem"
-return
+function mostrarMensagem(texto, tipo) {
+    mensagem.textContent = texto;
+    mensagem.className = `form-message ${tipo}`;
 }
 
-try{
+form.addEventListener("submit", async (event) => {
+    event.preventDefault();
 
-const resposta = await fetch("http://localhost:3000/cadastro",{
-method: "POST",
-headers:{
-"Content-Type": "application/json"
-},
-body: JSON.stringify({ nome, email, senha, senha2 })
-})
+    const submitButton = form.querySelector("button[type='submit']");
+    const nome = document.getElementById("nome").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const senha = document.getElementById("senha").value;
+    const senha2 = document.getElementById("senha2").value;
 
-const dados = await resposta.json()
+    if (!nome || !email || !senha || !senha2) {
+        mostrarMensagem("Preencha todos os campos para continuar.", "error");
+        return;
+    }
 
-if(resposta.ok){
-mensagem.style.color = "green"
-mensagem.innerText = dados.mensagem
-form.reset()
+    if (senha.length < 8) {
+        mostrarMensagem("A senha precisa ter no mínimo 8 caracteres.", "error");
+        return;
+    }
 
-setTimeout(()=>{
-window.location.href = "login.html"
-},1000)
+    if (senha !== senha2) {
+        mostrarMensagem("As senhas não coincidem.", "error");
+        return;
+    }
 
-}else{
-mensagem.style.color = "red"
-mensagem.innerText = dados.erro
-}
+    try {
+        submitButton.disabled = true;
+        submitButton.textContent = "Cadastrando...";
+        mostrarMensagem("", "");
 
-}catch(erro){
+        const resposta = await fetch(`${API_URL}/cadastro`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome, email, senha, senha2 })
+        });
 
-mensagem.style.color = "red"
-mensagem.innerText = "Erro ao conectar com servidor"
+        const dados = await resposta.json();
 
-}
+        if (!resposta.ok) {
+            mostrarMensagem(dados.erro || "Não foi possível cadastrar.", "error");
+            return;
+        }
 
-})
+        mostrarMensagem(dados.mensagem || "Cadastro realizado com sucesso.", "success");
+        form.reset();
+
+        setTimeout(() => {
+            window.location.href = "login.html";
+        }, 900);
+    } catch (erro) {
+        mostrarMensagem("Não foi possível conectar ao servidor.", "error");
+    } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "Cadastrar";
+    }
+});

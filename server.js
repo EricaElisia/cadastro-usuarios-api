@@ -1,369 +1,689 @@
 const express = require("express");
 const cors = require("cors");
-const db = require("./db");
 const bcrypt = require("bcrypt");
+const path = require("path");
+const db = require("./db");
 
 const app = express();
+const PORT = 3000;
+
+const STATUS_VALIDOS = ["pendente", "em andamento", "concluido", "concluida"];
+const PRIORIDADES_VALIDAS = ["baixa", "media", "alta"];
+const colunasCache = {};
 
 app.use(express.json());
 app.use(cors());
 
+function query(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (erro, resultado) => {
+            if (erro) {
+                reject(erro);
+                return;
+            }
+            resolve(resultado);
+        });
+    });
+}
+
+function normalizarStatus(status) {
+    if (status === "concluida") return "concluido";
+    if (status === "andamento") return "em andamento";
+    return status || "pendente";
+}
+
+function statusParaBanco(status) {
+    return normalizarStatus(status) === "concluido" ? "concluida" : normalizarStatus(status);
+}
+
+function validarData(data) {
+    return !data || /^\d{4}-\d{2}-\d{2}$/.test(data);
+}
+
+function validarPeriodo(dataInicio, dataFim, horaInicio, horaFim, diaInteiro) {
+    if (dataInicio && !validarData(dataInicio)) return "Data de início inválida.";
+    if (dataFim && !validarData(dataFim)) return "Data de fim inválida.";
+
+    if (dataInicio && dataFim && dataFim < dataInicio) {
+        return "A data de fim não pode ser anterior à data de início.";
+    }
+
+    if (!diaInteiro && dataInicio && dataFim && dataInicio === dataFim && horaInicio && horaFim && horaFim < horaInicio) {
+        return "A hora de fim não pode ser anterior à hora de início.";
+    }
+
+    return "";
+}
+
+async function colunaExiste(tabela, coluna) {
+    const chave = `${tabela}.${coluna}`;
+    if (colunasCache[chave] !== undefined) return colunasCache[chave];
+
+    const resultado = await query(
+        `SELECT COUNT(*) AS total
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+            AND COLUMN_NAME = ?`,
+        [tabela, coluna]
+    );
+
+    colunasCache[chave] = resultado[0].total > 0;
+    return colunasCache[chave];
+}
+
+async function tabelaExiste(tabela) {
+    const resultado = await query(
+        `SELECT COUNT(*) AS total
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?`,
+        [tabela]
+    );
+    return resultado[0].total > 0;
+}
+
+async function buscarTarefaDoUsuario(idTarefa, idUsuario) {
+    const tarefas = await query(
+        "SELECT * FROM tarefas WHERE id_tarefa = ? AND id_usuario = ?",
+        [idTarefa, idUsuario]
+    );
+    return tarefas[0];
+}
+
+async function montarFiltrosTarefas(idUsuario, filtros) {
+    const where = ["id_usuario = ?"];
+    const params = [idUsuario];
+    const { status, prioridade, data_inicio, data_fim, q, id_lista } = filtros;
+    const temDataInicio = await colunaExiste("tarefas", "data_inicio");
+    const temDataFim = await colunaExiste("tarefas", "data_fim");
+    const temLista = await colunaExiste("tarefas", "id_lista");
+    const campoInicio = temDataInicio ? "COALESCE(data_inicio, data_vencimento)" : "data_vencimento";
+    const campoFim = temDataFim ? "COALESCE(data_fim, data_vencimento)" : "data_vencimento";
+
+    if (status && status !== "todos") {
+        where.push("status = ?");
+        params.push(statusParaBanco(status));
+    }
+
+    if (prioridade && prioridade !== "todas") {
+        where.push("prioridade = ?");
+        params.push(prioridade);
+    }
+
+    if (data_inicio) {
+        where.push(`${campoFim} >= ?`);
+        params.push(data_inicio);
+    }
+
+    if (data_fim) {
+        where.push(`${campoInicio} <= ?`);
+        params.push(data_fim);
+    }
+
+    if (q) {
+        where.push("(titulo LIKE ? OR descricao LIKE ?)");
+        params.push(`%${q}%`, `%${q}%`);
+    }
+
+    if (temLista && id_lista === "sem_lista") {
+        where.push("id_lista IS NULL");
+    } else if (temLista && id_lista) {
+        where.push("id_lista = ?");
+        params.push(id_lista);
+    }
+
+    return { where, params };
+}
+
+function dadosPeriodo(body) {
+    const dataFinal = body.data_fim || body.data || null;
+    const diaInteiro = body.dia_inteiro !== false && body.dia_inteiro !== "false" && body.dia_inteiro !== 0;
+
+    return {
+        dataInicio: body.data_inicio || null,
+        dataFim: dataFinal,
+        horaInicio: diaInteiro ? null : body.hora_inicio || null,
+        horaFim: diaInteiro ? null : body.hora_fim || null,
+        diaInteiro
+    };
+}
+
+async function aplicarCamposOpcionais(colunas, valores, body) {
+    const periodo = dadosPeriodo(body);
+
+    if (await colunaExiste("tarefas", "id_lista")) {
+        colunas.push("id_lista");
+        valores.push(body.id_lista || null);
+    }
+
+    if (await colunaExiste("tarefas", "data_inicio")) {
+        colunas.push("data_inicio");
+        valores.push(periodo.dataInicio);
+    }
+
+    if (await colunaExiste("tarefas", "data_fim")) {
+        colunas.push("data_fim");
+        valores.push(periodo.dataFim);
+    }
+
+    if (await colunaExiste("tarefas", "hora_inicio")) {
+        colunas.push("hora_inicio");
+        valores.push(periodo.horaInicio);
+    }
+
+    if (await colunaExiste("tarefas", "hora_fim")) {
+        colunas.push("hora_fim");
+        valores.push(periodo.horaFim);
+    }
+
+    if (await colunaExiste("tarefas", "dia_inteiro")) {
+        colunas.push("dia_inteiro");
+        valores.push(periodo.diaInteiro ? 1 : 0);
+    }
+}
+
+async function aplicarSetsOpcionais(sets, params, body) {
+    const periodo = dadosPeriodo(body);
+
+    if (await colunaExiste("tarefas", "id_lista")) {
+        sets.push("id_lista = ?");
+        params.push(body.id_lista || null);
+    }
+
+    if (await colunaExiste("tarefas", "data_inicio")) {
+        sets.push("data_inicio = ?");
+        params.push(periodo.dataInicio);
+    }
+
+    if (await colunaExiste("tarefas", "data_fim")) {
+        sets.push("data_fim = ?");
+        params.push(periodo.dataFim);
+    }
+
+    if (await colunaExiste("tarefas", "hora_inicio")) {
+        sets.push("hora_inicio = ?");
+        params.push(periodo.horaInicio);
+    }
+
+    if (await colunaExiste("tarefas", "hora_fim")) {
+        sets.push("hora_fim = ?");
+        params.push(periodo.horaFim);
+    }
+
+    if (await colunaExiste("tarefas", "dia_inteiro")) {
+        sets.push("dia_inteiro = ?");
+        params.push(periodo.diaInteiro ? 1 : 0);
+    }
+}
+
+async function colunasLista() {
+    if (!(await tabelaExiste("listas"))) {
+        return { cor: false, ordem: false };
+    }
+
+    return {
+        cor: await colunaExiste("listas", "cor"),
+        ordem: await colunaExiste("listas", "ordem")
+    };
+}
+
 app.get("/", (req, res) => {
-    res.send("API de cadastro funcionando!");
+    res.json({ mensagem: "API do iNota funcionando!" });
 });
 
-// ROTA DE CADASTRO
+app.use(express.static(path.join(__dirname, "Front")));
+
 app.post("/cadastro", async (req, res) => {
     const { nome, email, senha, senha2 } = req.body;
 
-    // Valida campos obrigatórios
     if (!nome || !email || !senha || !senha2) {
-        return res.status(400).json({ erro: "Todos os campos são obrigatórios" });
+        return res.status(400).json({ erro: "Todos os campos são obrigatórios." });
     }
 
-    // Valida formato de email
-    const emailRegex = /\S+@\S+\.\S+/;
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({ erro: "Formato de e-mail inválido" });
+    if (!/\S+@\S+\.\S+/.test(email)) {
+        return res.status(400).json({ erro: "Informe um e-mail válido." });
     }
 
-    // Valida tamanho da senha
     if (senha.length < 8) {
-        return res.status(400).json({ erro: "Senha deve ter no mínimo 8 caracteres" });
+        return res.status(400).json({ erro: "A senha precisa ter no mínimo 8 caracteres." });
     }
 
     if (senha !== senha2) {
-        return res.status(400).json({ erro: "Senhas não coincidem" });
+        return res.status(400).json({ erro: "As senhas não coincidem." });
     }
 
     try {
-        // Verificar se email já existe
-        const verificarEmail = "SELECT * FROM usuarios WHERE email = ?";
-        db.query(verificarEmail, [email], async (erro, resultado) => {
-            if (erro) {
-                return res.status(500).json({ erro: "Erro ao verificar e-mail" });
-            }
+        const usuarios = await query("SELECT id_usuario FROM usuarios WHERE email = ?", [
+            email.trim().toLowerCase()
+        ]);
 
-            if (resultado.length > 0) {
-                return res.status(400).json({ erro: "E-mail já cadastrado" });
-            }
+        if (usuarios.length > 0) {
+            return res.status(400).json({ erro: "Este e-mail já está cadastrado." });
+        }
 
-            // Criptografar senha
-            const senhaHash = await bcrypt.hash(senha, 10);
+        const senhaHash = await bcrypt.hash(senha, 10);
+        await query(
+            "INSERT INTO usuarios (nome, email, senha, status) VALUES (?, ?, ?, 'ativo')",
+            [nome.trim(), email.trim().toLowerCase(), senhaHash]
+        );
 
-            const sql = "INSERT INTO usuarios (nome, email, senha, status) VALUES (?, ?, ?, 'ativo')";
-            db.query(sql, [nome, email, senhaHash], (erro, resultado) => {
-                if (erro) {
-                    console.error(erro);
-                    return res.status(500).json({ erro: "Erro ao cadastrar usuário" });
-                }
-                res.json({ mensagem: "Usuário cadastrado com sucesso" });
-            });
-        });
+        res.status(201).json({ mensagem: "Usuário cadastrado com sucesso." });
     } catch (erro) {
-        res.status(500).json({ erro: "Erro interno do servidor" });
+        console.error("Erro no cadastro:", erro);
+        res.status(500).json({ erro: "Erro interno ao cadastrar usuário." });
     }
 });
 
-// ROTA DE LOGIN
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
     const { email, senha } = req.body;
 
-    // Valida campos
     if (!email || !senha) {
-        return res.status(400).json({ erro: "Preencha todos os campos" });
+        return res.status(400).json({ erro: "Preencha e-mail e senha." });
     }
 
-    const sql = "SELECT * FROM usuarios WHERE email = ?";
-    db.query(sql, [email], async (erro, resultado) => {
-        if (erro) {
-            return res.status(500).json({ erro: "Erro no servidor" });
+    try {
+        const usuarios = await query("SELECT * FROM usuarios WHERE email = ?", [
+            email.trim().toLowerCase()
+        ]);
+
+        if (usuarios.length === 0) {
+            return res.status(400).json({ erro: "E-mail ou senha inválidos." });
         }
 
-        if (resultado.length === 0) {
-            return res.status(400).json({ erro: "E-mail ou senha inválidos" });
-        }
-
-        const usuario = resultado[0];
+        const usuario = usuarios[0];
         const senhaValida = await bcrypt.compare(senha, usuario.senha);
 
         if (!senhaValida) {
-            return res.status(400).json({ erro: "E-mail ou senha inválidos" });
+            return res.status(400).json({ erro: "E-mail ou senha inválidos." });
         }
 
         res.json({
-            mensagem: "Login realizado com sucesso",
+            mensagem: "Login realizado com sucesso.",
             usuario: {
-                id: usuario.id_usuario, // Verifique o nome do campo
+                id: usuario.id_usuario,
                 nome: usuario.nome,
                 email: usuario.email
             }
         });
-    });
+    } catch (erro) {
+        console.error("Erro no login:", erro);
+        res.status(500).json({ erro: "Erro interno ao fazer login." });
+    }
 });
 
-// ROTA PARA ADICIONAR TAREFA
-app.post("/tarefas", (req, res) => {
+app.post("/tarefas", async (req, res) => {
+    const { titulo, descricao, prioridade, status, id_usuario } = req.body;
+    const periodo = dadosPeriodo(req.body);
+    const statusNormalizado = normalizarStatus(status);
+    const prioridadeNormalizada = prioridade || "baixa";
 
-    console.log("BODY:", req.body)
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+    if (!titulo || !titulo.trim()) return res.status(400).json({ erro: "Título é obrigatório." });
+    if (!STATUS_VALIDOS.includes(statusNormalizado)) return res.status(400).json({ erro: "Status inválido." });
+    if (!PRIORIDADES_VALIDAS.includes(prioridadeNormalizada)) return res.status(400).json({ erro: "Prioridade inválida." });
 
-    const { titulo, descricao, data, prioridade, status, id_usuario } = req.body;
-
-    if (!titulo) {
-        return res.status(400).json({ erro: "Título é obrigatório" });
-    }
-
-    // 🔥 VALIDAÇÃO NO BACK (permite hoje)
-    if (data) {
-        const hoje = new Date().toLocaleDateString('en-CA')
-
-        if (data < hoje) {
-            return res.status(400).json({ erro: "Data de vencimento inválida" });
-        }
-    }
-
-    const sql = `
-        INSERT INTO tarefas 
-        (titulo, descricao, data_vencimento, prioridade, status, id_usuario)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `;
-
-    db.query(
-        sql,
-        [
-            titulo,
-            descricao || null,
-            data || null,
-            prioridade || null,
-            status || "pendente",
-            id_usuario
-        ],
-        (erro) => {
-            if (erro) {
-                console.error("ERRO INSERT:", erro)
-                return res.status(500).json({ erro: "Erro ao adicionar tarefa" });
-            }
-
-            res.json({ mensagem: "Tarefa criada com sucesso" });
-        }
+    const erroPeriodo = validarPeriodo(
+        periodo.dataInicio,
+        periodo.dataFim,
+        periodo.horaInicio,
+        periodo.horaFim,
+        periodo.diaInteiro
     );
-});
+    if (erroPeriodo) return res.status(400).json({ erro: erroPeriodo });
 
-// ROTA PARA OBTER TAREFAS
-app.get("/tarefas/:id_usuario", (req, res) => {
-    const { id_usuario } = req.params;
+    try {
+        const colunas = ["titulo", "descricao", "data_vencimento", "prioridade", "status", "id_usuario"];
+        const valores = [
+            titulo.trim(),
+            descricao ? descricao.trim() : null,
+            periodo.dataFim,
+            prioridadeNormalizada,
+            statusParaBanco(statusNormalizado),
+            id_usuario
+        ];
 
-    const sql = "SELECT * FROM tarefas WHERE id_usuario = ?";
+        await aplicarCamposOpcionais(colunas, valores, req.body);
 
-    db.query(sql, [id_usuario], (erro, resultado) => {
-        if (erro) {
-            return res.status(500).json({ erro: "Erro ao obter tarefas" });
-        }
-
-        res.json(resultado);
-    });
-});
-
-// Iniciar o servidor
-app.listen(3000, () => {
-    console.log("Servidor rodando na porta 3000");
-});
-
-app.put("/tarefas/:id", (req, res) => {
-    const { status, id_usuario } = req.body;
-    const { id } = req.params;
-
-    if (!status) {
-        return res.status(400).json({ erro: "Status é obrigatório" });
-    }
-
-    // 🔍 BUSCAR TAREFA
-    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?";
-
-    db.query(buscar, [id], (erro, resultado) => {
-        if (erro) {
-            return res.status(500).json({ erro: "Erro ao buscar tarefa" });
-        }
-
-        if (resultado.length === 0) {
-            return res.status(404).json({ erro: "Tarefa não encontrada" });
-        }
-
-        const tarefa = resultado[0];
-
-        // 🔒 VALIDA DONO
-        if (tarefa.id_usuario !== id_usuario) {
-            return res.status(403).json({ erro: "Sem permissão" });
-        }
-
-        // 🔄 ATUALIZA STATUS
-        const sql = "UPDATE tarefas SET status = ? WHERE id_tarefa = ?";
-
-        db.query(sql, [status, id], (erro, resultado) => {
-            if (erro) {
-                return res.status(500).json({ erro: "Erro ao atualizar status" });
-            }
-
-            res.json({ mensagem: "Status atualizado com sucesso" });
-        });
-    });
-});
-
-app.put("/tarefas/:id/editar", (req, res) => {
-    const { id } = req.params;
-    const { titulo, descricao, data, prioridade, id_usuario } = req.body;
-
-    if (!titulo) {
-        return res.status(400).json({ erro: "Título é obrigatório" });
-    }
-
-    if (data) {
-        const hoje = new Date().toLocaleDateString('en-CA');
-        if (data < hoje) {
-            return res.status(400).json({ erro: "Data inválida" });
-        }
-    }
-
-    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?";
-
-    db.query(buscar, [id], (erro, resultado) => {
-        if (erro) {
-            return res.status(500).json({ erro: "Erro ao buscar tarefa" });
-        }
-
-        if (resultado.length === 0) {
-            return res.status(404).json({ erro: "Tarefa não encontrada" });
-        }
-
-        const tarefa = resultado[0];
-
-        // 🔒 VERIFICA DONO
-        if (tarefa.id_usuario !== id_usuario) {
-            return res.status(403).json({ erro: "Sem permissão" });
-        }
-
-        const sql = `
-            UPDATE tarefas 
-            SET titulo = ?, descricao = ?, data_vencimento = ?, prioridade = ?
-            WHERE id_tarefa = ?
-        `;
-
-        db.query(
-            sql,
-            [
-                titulo,
-                descricao || null,
-                data || null,
-                prioridade || null,
-                id
-            ],
-            (erro) => {
-                if (erro) {
-                    return res.status(500).json({ erro: "Erro ao atualizar tarefa" });
-                }
-
-                res.json({ mensagem: "Tarefa atualizada com sucesso" });
-            }
+        const placeholders = colunas.map(() => "?").join(", ");
+        const resultado = await query(
+            `INSERT INTO tarefas (${colunas.join(", ")}) VALUES (${placeholders})`,
+            valores
         );
-    });
-});
 
-app.delete("/tarefas/:id", (req, res) => {
-
-    const { id } = req.params
-    const { id_usuario } = req.body
-
-    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?"
-
-    db.query(buscar, [id], (erro, resultado) => {
-
-        if (erro) {
-            return res.status(500).json({ erro: "Erro ao buscar tarefa" })
-        }
-
-        if (resultado.length === 0) {
-            return res.status(404).json({ erro: "Tarefa não encontrada" })
-        }
-
-        const tarefa = resultado[0]
-
-        // 🔒 VERIFICA SE É DONO
-        if (tarefa.id_usuario !== id_usuario) {
-            return res.status(403).json({ erro: "Sem permissão" })
-        }
-
-        const sql = "DELETE FROM tarefas WHERE id_tarefa = ?"
-
-        db.query(sql, [id], (erro) => {
-
-            if (erro) {
-                return res.status(500).json({ erro: "Erro ao excluir tarefa" })
-            }
-
-            res.json({ mensagem: "Tarefa excluída com sucesso" })
-        })
-    })
-})
-
-app.post("/listas", (req, res) => {
-    const { nome, id_usuario } = req.body;
-
-    if (!nome) {
-        return res.status(400).json({ erro: "Nome da lista é obrigatório" });
+        const tarefas = await query("SELECT * FROM tarefas WHERE id_tarefa = ?", [resultado.insertId]);
+        res.status(201).json({ mensagem: "Tarefa criada com sucesso.", tarefa: tarefas[0] });
+    } catch (erro) {
+        console.error("Erro ao criar tarefa:", erro);
+        res.status(500).json({ erro: "Erro ao criar tarefa." });
     }
-
-    const sql = "INSERT INTO listas (nome, id_usuario) VALUES (?, ?)";
-
-    db.query(sql, [nome, id_usuario], (erro) => {
-        if (erro) {
-            return res.status(500).json({ erro: "Erro ao criar lista" });
-        }
-
-        res.json({ mensagem: "Lista criada com sucesso" });
-    });
 });
 
-app.get("/listas/:id_usuario", (req, res) => {
+app.get("/tarefas/:id_usuario", async (req, res) => {
     const { id_usuario } = req.params;
 
-    const sql = "SELECT * FROM listas WHERE id_usuario = ?";
+    try {
+        const { where, params } = await montarFiltrosTarefas(id_usuario, req.query);
+        const temDataFim = await colunaExiste("tarefas", "data_fim");
+        const ordemPrazo = temDataFim
+            ? "COALESCE(data_fim, data_vencimento, '9999-12-31')"
+            : "COALESCE(data_vencimento, '9999-12-31')";
+        const tarefas = await query(
+            `SELECT *
+             FROM tarefas
+             WHERE ${where.join(" AND ")}
+             ORDER BY
+                FIELD(status, 'pendente', 'em andamento', 'concluido', 'concluida'),
+                ${ordemPrazo},
+                id_tarefa DESC`,
+            params
+        );
 
-    db.query(sql, [id_usuario], (erro, resultado) => {
-        if (erro) {
-            return res.status(500).json({ erro: "Erro ao buscar listas" });
-        }
-
-        res.json(resultado);
-    });
+        res.json(tarefas);
+    } catch (erro) {
+        console.error("Erro ao listar tarefas:", erro);
+        res.status(500).json({ erro: "Erro ao obter tarefas." });
+    }
 });
 
-app.put("/tarefas/:id/mover", (req, res) => {
+async function atualizarTarefa(req, res) {
+    const { id } = req.params;
+    const { titulo, descricao, prioridade, status, id_usuario } = req.body;
+    const periodo = dadosPeriodo(req.body);
+    const prioridadeNormalizada = prioridade || "baixa";
+
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+
+    if (!titulo && status && Object.keys(req.body).every((campo) => ["status", "id_usuario"].includes(campo))) {
+        req.params.id = id;
+        return atualizarStatus(req, res);
+    }
+
+    if (!titulo || !titulo.trim()) return res.status(400).json({ erro: "Título é obrigatório." });
+    if (!PRIORIDADES_VALIDAS.includes(prioridadeNormalizada)) return res.status(400).json({ erro: "Prioridade inválida." });
+
+    const erroPeriodo = validarPeriodo(
+        periodo.dataInicio,
+        periodo.dataFim,
+        periodo.horaInicio,
+        periodo.horaFim,
+        periodo.diaInteiro
+    );
+    if (erroPeriodo) return res.status(400).json({ erro: erroPeriodo });
+
+    try {
+        const tarefa = await buscarTarefaDoUsuario(id, id_usuario);
+        if (!tarefa) return res.status(404).json({ erro: "Tarefa não encontrada para este usuário." });
+
+        const statusNormalizado = status ? normalizarStatus(status) : normalizarStatus(tarefa.status);
+        if (!STATUS_VALIDOS.includes(statusNormalizado)) return res.status(400).json({ erro: "Status inválido." });
+
+        const sets = [
+            "titulo = ?",
+            "descricao = ?",
+            "data_vencimento = ?",
+            "prioridade = ?",
+            "status = ?"
+        ];
+        const params = [
+            titulo.trim(),
+            descricao ? descricao.trim() : null,
+            periodo.dataFim,
+            prioridadeNormalizada,
+            statusParaBanco(statusNormalizado)
+        ];
+
+        await aplicarSetsOpcionais(sets, params, req.body);
+
+        if (await colunaExiste("tarefas", "data_conclusao")) {
+            sets.push("data_conclusao = CASE WHEN ? = 'concluido' THEN COALESCE(data_conclusao, NOW()) ELSE NULL END");
+            params.push(statusNormalizado);
+        }
+
+        params.push(id, id_usuario);
+
+        await query(
+            `UPDATE tarefas SET ${sets.join(", ")} WHERE id_tarefa = ? AND id_usuario = ?`,
+            params
+        );
+
+        const atualizadas = await query("SELECT * FROM tarefas WHERE id_tarefa = ?", [id]);
+        res.json({ mensagem: "Tarefa atualizada com sucesso.", tarefa: atualizadas[0] });
+    } catch (erro) {
+        console.error("Erro ao atualizar tarefa:", erro);
+        res.status(500).json({ erro: "Erro ao atualizar tarefa." });
+    }
+}
+
+app.put("/tarefas/:id", atualizarTarefa);
+app.put("/tarefas/:id/editar", atualizarTarefa);
+
+async function atualizarStatus(req, res) {
+    const { id } = req.params;
+    const { status, id_usuario, id_lista } = req.body;
+    const statusNormalizado = normalizarStatus(status);
+
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+    if (!STATUS_VALIDOS.includes(statusNormalizado)) return res.status(400).json({ erro: "Status inválido." });
+
+    try {
+        const tarefa = await buscarTarefaDoUsuario(id, id_usuario);
+        if (!tarefa) return res.status(404).json({ erro: "Tarefa não encontrada para este usuário." });
+
+        const sets = ["status = ?"];
+        const params = [statusParaBanco(statusNormalizado)];
+
+        if ((await colunaExiste("tarefas", "id_lista")) && id_lista !== undefined) {
+            sets.push("id_lista = ?");
+            params.push(id_lista || null);
+        }
+
+        if (await colunaExiste("tarefas", "data_conclusao")) {
+            sets.push("data_conclusao = CASE WHEN ? = 'concluido' THEN COALESCE(data_conclusao, NOW()) ELSE NULL END");
+            params.push(statusNormalizado);
+        }
+
+        params.push(id, id_usuario);
+
+        await query(
+            `UPDATE tarefas SET ${sets.join(", ")} WHERE id_tarefa = ? AND id_usuario = ?`,
+            params
+        );
+
+        res.json({ mensagem: "Status atualizado com sucesso." });
+    } catch (erro) {
+        console.error("Erro ao atualizar status:", erro);
+        res.status(500).json({ erro: "Erro ao atualizar status." });
+    }
+}
+
+app.patch("/tarefas/:id/status", atualizarStatus);
+
+app.delete("/tarefas/:id", async (req, res) => {
+    const { id } = req.params;
+    const idUsuario = req.body.id_usuario || req.query.id_usuario;
+
+    if (!idUsuario) return res.status(400).json({ erro: "Usuário não informado." });
+
+    try {
+        const tarefa = await buscarTarefaDoUsuario(id, idUsuario);
+        if (!tarefa) return res.status(404).json({ erro: "Tarefa não encontrada para este usuário." });
+
+        await query("DELETE FROM tarefas WHERE id_tarefa = ? AND id_usuario = ?", [id, idUsuario]);
+        res.json({ mensagem: "Tarefa excluída com sucesso." });
+    } catch (erro) {
+        console.error("Erro ao excluir tarefa:", erro);
+        res.status(500).json({ erro: "Erro ao excluir tarefa." });
+    }
+});
+
+app.post("/listas", async (req, res) => {
+    const { nome, id_usuario, cor } = req.body;
+
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+    if (!nome || !nome.trim()) return res.status(400).json({ erro: "Nome do quadro é obrigatório." });
+
+    try {
+        if (!(await tabelaExiste("listas"))) {
+            return res.status(500).json({ erro: "A tabela de quadros ainda não existe. Rode o SQL informado no projeto." });
+        }
+
+        const extras = await colunasLista();
+        const colunas = ["nome", "id_usuario"];
+        const valores = [nome.trim(), id_usuario];
+
+        if (extras.cor) {
+            colunas.push("cor");
+            valores.push(cor || "#7c3aed");
+        }
+
+        if (extras.ordem) {
+            const ordem = await query("SELECT COALESCE(MAX(ordem), 0) + 1 AS proxima FROM listas WHERE id_usuario = ?", [id_usuario]);
+            colunas.push("ordem");
+            valores.push(ordem[0].proxima);
+        }
+
+        const placeholders = colunas.map(() => "?").join(", ");
+        const resultado = await query(
+            `INSERT INTO listas (${colunas.join(", ")}) VALUES (${placeholders})`,
+            valores
+        );
+
+        res.status(201).json({
+            mensagem: "Quadro criado com sucesso.",
+            lista: { id_lista: resultado.insertId, nome: nome.trim(), id_usuario, cor: cor || "#7c3aed" }
+        });
+    } catch (erro) {
+        console.error("Erro ao criar quadro:", erro);
+        res.status(500).json({ erro: "Erro ao criar quadro." });
+    }
+});
+
+app.get("/listas/:id_usuario", async (req, res) => {
+    const { id_usuario } = req.params;
+
+    try {
+        if (!(await tabelaExiste("listas"))) return res.json([]);
+
+        const extras = await colunasLista();
+        const orderBy = extras.ordem ? "ordem ASC, id_lista ASC" : "id_lista ASC";
+        const listas = await query(`SELECT * FROM listas WHERE id_usuario = ? ORDER BY ${orderBy}`, [id_usuario]);
+
+        res.json(listas);
+    } catch (erro) {
+        console.error("Erro ao buscar quadros:", erro);
+        res.status(500).json({ erro: "Erro ao buscar quadros." });
+    }
+});
+
+app.put("/listas/:id", async (req, res) => {
+    const { id } = req.params;
+    const { nome, cor, id_usuario } = req.body;
+
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+    if (!nome || !nome.trim()) return res.status(400).json({ erro: "Nome do quadro é obrigatório." });
+
+    try {
+        const lista = await query("SELECT * FROM listas WHERE id_lista = ? AND id_usuario = ?", [id, id_usuario]);
+        if (lista.length === 0) return res.status(404).json({ erro: "Quadro não encontrado." });
+
+        const extras = await colunasLista();
+        const sets = ["nome = ?"];
+        const params = [nome.trim()];
+
+        if (extras.cor) {
+            sets.push("cor = ?");
+            params.push(cor || "#7c3aed");
+        }
+
+        params.push(id, id_usuario);
+        await query(`UPDATE listas SET ${sets.join(", ")} WHERE id_lista = ? AND id_usuario = ?`, params);
+
+        res.json({ mensagem: "Quadro atualizado com sucesso." });
+    } catch (erro) {
+        console.error("Erro ao atualizar quadro:", erro);
+        res.status(500).json({ erro: "Erro ao atualizar quadro." });
+    }
+});
+
+app.patch("/listas/:id/mover", async (req, res) => {
+    const { id } = req.params;
+    const { direcao, id_usuario } = req.body;
+
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+    if (!["esquerda", "direita"].includes(direcao)) return res.status(400).json({ erro: "Direção inválida." });
+
+    try {
+        const extras = await colunasLista();
+        if (!extras.ordem) return res.json({ mensagem: "Ordem visual mantida. Rode o SQL para persistir reordenação." });
+
+        const listas = await query(
+            "SELECT id_lista, ordem FROM listas WHERE id_usuario = ? ORDER BY ordem ASC, id_lista ASC",
+            [id_usuario]
+        );
+        const atualIndex = listas.findIndex((lista) => String(lista.id_lista) === String(id));
+        const alvoIndex = direcao === "esquerda" ? atualIndex - 1 : atualIndex + 1;
+
+        if (atualIndex < 0) return res.status(404).json({ erro: "Quadro não encontrado." });
+        if (alvoIndex < 0 || alvoIndex >= listas.length) return res.json({ mensagem: "Quadro já está no limite." });
+
+        const atual = listas[atualIndex];
+        const alvo = listas[alvoIndex];
+
+        await query("UPDATE listas SET ordem = ? WHERE id_lista = ? AND id_usuario = ?", [alvo.ordem, atual.id_lista, id_usuario]);
+        await query("UPDATE listas SET ordem = ? WHERE id_lista = ? AND id_usuario = ?", [atual.ordem, alvo.id_lista, id_usuario]);
+
+        res.json({ mensagem: "Quadro movido com sucesso." });
+    } catch (erro) {
+        console.error("Erro ao mover quadro:", erro);
+        res.status(500).json({ erro: "Erro ao mover quadro." });
+    }
+});
+
+app.delete("/listas/:id", async (req, res) => {
+    const { id } = req.params;
+    const idUsuario = req.body.id_usuario || req.query.id_usuario;
+
+    if (!idUsuario) return res.status(400).json({ erro: "Usuário não informado." });
+
+    try {
+        const lista = await query("SELECT * FROM listas WHERE id_lista = ? AND id_usuario = ?", [id, idUsuario]);
+        if (lista.length === 0) return res.status(404).json({ erro: "Quadro não encontrado." });
+
+        if (await colunaExiste("tarefas", "id_lista")) {
+            await query("UPDATE tarefas SET id_lista = NULL WHERE id_lista = ? AND id_usuario = ?", [id, idUsuario]);
+        }
+
+        await query("DELETE FROM listas WHERE id_lista = ? AND id_usuario = ?", [id, idUsuario]);
+        res.json({ mensagem: "Quadro excluído. As tarefas voltaram para as colunas padrão." });
+    } catch (erro) {
+        console.error("Erro ao excluir quadro:", erro);
+        res.status(500).json({ erro: "Erro ao excluir quadro." });
+    }
+});
+
+app.put("/tarefas/:id/mover", async (req, res) => {
     const { id } = req.params;
     const { id_lista, id_usuario } = req.body;
 
-    const buscar = "SELECT * FROM tarefas WHERE id_tarefa = ?";
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
 
-    db.query(buscar, [id], (erro, resultado) => {
-        if (erro) return res.status(500).json({ erro: "Erro ao buscar tarefa" });
+    try {
+        const tarefa = await buscarTarefaDoUsuario(id, id_usuario);
+        if (!tarefa) return res.status(404).json({ erro: "Tarefa não encontrada para este usuário." });
 
-        if (resultado.length === 0) {
-            return res.status(404).json({ erro: "Tarefa não encontrada" });
-        }
+        await query(
+            "UPDATE tarefas SET id_lista = ? WHERE id_tarefa = ? AND id_usuario = ?",
+            [id_lista || null, id, id_usuario]
+        );
 
-        const tarefa = resultado[0];
+        res.json({ mensagem: "Tarefa movida de quadro." });
+    } catch (erro) {
+        console.error("Erro ao mover tarefa:", erro);
+        res.status(500).json({ erro: "Erro ao mover tarefa." });
+    }
+});
 
-        if (tarefa.id_usuario !== id_usuario) {
-            return res.status(403).json({ erro: "Sem permissão" });
-        }
-
-        const sql = "UPDATE tarefas SET id_lista = ? WHERE id_tarefa = ?";
-
-        db.query(sql, [id_lista, id], (erro) => {
-            if (erro) {
-                return res.status(500).json({ erro: "Erro ao mover tarefa" });
-            }
-
-            res.json({ mensagem: "Tarefa movida de lista" });
-        });
-    });
+app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
