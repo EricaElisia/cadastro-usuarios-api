@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redefinir senha | iNota</title>
+    <link rel="stylesheet" href="Style.css">
+</head>
+<body class="auth-page">
+    <a class="auth-brand-corner" href="login.html" aria-label="iNota">
+        <img src="assets/logo.svg" alt="Logo iNota" class="brand-logo">
+        <div>
+            <span class="brand-name">iNota</span>
+            <span class="brand-subtitle">Seu dia em quadros simples</span>
+        </div>
+    </a>
+
+    <main class="auth-shell">
+        <section class="auth-card" aria-label="Redefinicao de senha">
+            <div class="auth-heading">
+                <p class="eyebrow">Nova senha</p>
+                <h1>Crie uma senha segura para acessar sua conta.</h1>
+            </div>
+
+            <form id="resetForm" class="auth-form" novalidate>
+                <label for="senha">Nova senha</label>
+                <input type="password" id="senha" placeholder="Minimo de 8 caracteres" autocomplete="new-password" required>
+
+                <label for="senha2">Confirmar nova senha</label>
+                <input type="password" id="senha2" placeholder="Repita a senha" autocomplete="new-password" required>
+
+                <button type="submit" class="primary-btn">Redefinir senha</button>
+            </form>
+
+            <p id="mensagem" class="form-message" role="status" aria-live="polite"></p>
+
+            <p class="auth-switch">
+                <a href="login.html">Voltar para login</a>
+            </p>
+        </section>
+    </main>
+
+    <script src="redefinir-senha.js"></script>
+</body>
+</html>

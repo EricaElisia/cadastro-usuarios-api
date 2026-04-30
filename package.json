@@ -15,7 +15,8 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "mysql2": "^3.20.0"
+    "mysql2": "^3.20.0",
+    "nodemailer": "^6.9.16"
   },
   "repository": {
     "type": "git",

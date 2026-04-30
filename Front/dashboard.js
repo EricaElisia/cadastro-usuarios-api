@@ -1,4 +1,5 @@
 const API_URL = "http://localhost:3000";
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 const statusConfig = {
     pendente: {
@@ -24,6 +25,7 @@ let listas = [];
 let tarefaParaExcluir = null;
 let tarefaEmDetalhe = null;
 let quadroAtual = null;
+let sessionTimer = null;
 
 document.addEventListener("DOMContentLoaded", iniciarDashboard);
 
@@ -36,11 +38,18 @@ function iniciarDashboard() {
     }
 
     usuario = JSON.parse(usuarioSalvo);
+    if (sessaoExpirada()) {
+        logout("Sua sessao expirou por inatividade.");
+        return;
+    }
+    registrarAtividadeSessao();
     aplicarTema(localStorage.getItem("tema") || "light");
     prepararUsuario();
     prepararEventos();
     definirDataMinima();
+    iniciarControleSessao();
     carregarTudo();
+    setInterval(carregarNotificacoes, 24 * 60 * 60 * 1000);
 }
 
 function prepararUsuario() {
@@ -49,14 +58,17 @@ function prepararUsuario() {
 }
 
 function prepararEventos() {
-    document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("logoutBtn").addEventListener("click", () => logout());
     document.getElementById("themeToggle").addEventListener("click", alternarTema);
+    document.getElementById("profileBtn").addEventListener("click", abrirPerfil);
+    document.getElementById("historyBtn").addEventListener("click", abrirHistorico);
     document.getElementById("searchForm").addEventListener("submit", pesquisarTarefas);
     document.getElementById("advancedFiltersBtn").addEventListener("click", alternarFiltrosAvancados);
     document.getElementById("openTaskModalBtn").addEventListener("click", () => abrirFormularioTarefa());
     document.getElementById("openListModalBtn").addEventListener("click", abrirModalLista);
     document.getElementById("taskForm").addEventListener("submit", salvarTarefa);
     document.getElementById("listForm").addEventListener("submit", salvarLista);
+    document.getElementById("profileForm").addEventListener("submit", salvarPerfil);
     document.getElementById("boardSettingsForm").addEventListener("submit", salvarConfiguracaoQuadro);
     document.getElementById("deleteBoardBtn").addEventListener("click", excluirQuadroAtual);
     document.getElementById("moveBoardLeftBtn").addEventListener("click", () => moverQuadroAtual("esquerda"));
@@ -99,6 +111,7 @@ function definirDataMinima() {
 async function carregarTudo() {
     await carregarListas();
     await carregarTarefas();
+    await carregarNotificacoes();
 }
 
 async function carregarTarefas() {
@@ -679,6 +692,147 @@ async function excluirQuadroAtual() {
     }
 }
 
+async function abrirPerfil() {
+    document.getElementById("profileMessage").textContent = "";
+    document.getElementById("profileName").value = usuario.nome || "";
+    document.getElementById("profileEmail").value = usuario.email || "";
+    document.getElementById("profilePassword").value = "";
+    document.getElementById("profilePassword2").value = "";
+
+    try {
+        const resposta = await fetch(`${API_URL}/usuarios/${usuario.id}/perfil`);
+        const dados = await resposta.json();
+
+        if (resposta.ok) {
+            document.getElementById("profileName").value = dados.nome || usuario.nome || "";
+            document.getElementById("profileEmail").value = dados.email || usuario.email || "";
+        }
+    } catch (erro) {
+        mostrarToast("Nao foi possivel atualizar os dados do perfil agora.", "error");
+    }
+
+    abrirModal("profileModal");
+}
+
+async function salvarPerfil(event) {
+    event.preventDefault();
+
+    const nome = document.getElementById("profileName").value.trim();
+    const senha = document.getElementById("profilePassword").value;
+    const senha2 = document.getElementById("profilePassword2").value;
+    const mensagem = document.getElementById("profileMessage");
+
+    if (!nome || nome.length < 3) {
+        mensagem.textContent = "Informe um nome com pelo menos 3 caracteres.";
+        return;
+    }
+
+    if ((senha || senha2) && senha.length < 8) {
+        mensagem.textContent = "A nova senha precisa ter no minimo 8 caracteres.";
+        return;
+    }
+
+    if (senha !== senha2) {
+        mensagem.textContent = "As senhas nao coincidem.";
+        return;
+    }
+
+    try {
+        const resposta = await fetch(`${API_URL}/usuarios/${usuario.id}/perfil`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome, senha, senha2 })
+        });
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            mensagem.textContent = dados.erro || "Nao foi possivel atualizar o perfil.";
+            return;
+        }
+
+        usuario = dados.usuario;
+        localStorage.setItem("usuario", JSON.stringify(usuario));
+        prepararUsuario();
+        fecharModais();
+        mostrarToast(dados.mensagem || "Perfil atualizado.", "success");
+    } catch (erro) {
+        mensagem.textContent = "Nao foi possivel conectar ao servidor.";
+    }
+}
+
+async function carregarNotificacoes() {
+    const area = document.getElementById("deadlineAlerts");
+    if (!area) return;
+
+    try {
+        const resposta = await fetch(`${API_URL}/notificacoes/${usuario.id}`);
+        const dados = await resposta.json();
+
+        if (!resposta.ok || dados.length === 0) {
+            area.hidden = true;
+            area.innerHTML = "";
+            return;
+        }
+
+        area.hidden = false;
+        area.innerHTML = "";
+        const titulo = document.createElement("strong");
+        titulo.textContent = "Prazos nas proximas 24h";
+        area.appendChild(titulo);
+
+        dados.slice(0, 4).forEach((tarefa) => {
+            const item = document.createElement("span");
+            item.textContent = `${tarefa.titulo} (${formatarData(tarefa.data_prazo)})`;
+            area.appendChild(item);
+        });
+    } catch (erro) {
+        area.hidden = true;
+    }
+}
+
+async function abrirHistorico() {
+    const lista = document.getElementById("historyList");
+    lista.innerHTML = '<p class="details-description">Carregando historico...</p>';
+    abrirModal("historyModal");
+
+    try {
+        const resposta = await fetch(`${API_URL}/historico/${usuario.id}`);
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            lista.innerHTML = `<p class="modal-message">${dados.erro || "Nao foi possivel carregar o historico."}</p>`;
+            return;
+        }
+
+        if (dados.length === 0) {
+            lista.innerHTML = '<p class="details-description">Nenhuma atividade registrada ainda.</p>';
+            return;
+        }
+
+        lista.innerHTML = "";
+        dados.forEach((item) => {
+            const article = document.createElement("article");
+            article.className = "history-item";
+
+            const title = document.createElement("strong");
+            title.textContent = formatarTipoHistorico(item.tipo_acao);
+
+            const desc = document.createElement("p");
+            desc.textContent = item.descricao;
+
+            const date = document.createElement("small");
+            date.textContent = formatarDataHora(item.criado_em);
+
+            article.appendChild(title);
+            article.appendChild(desc);
+            article.appendChild(date);
+            lista.appendChild(article);
+        });
+    } catch (erro) {
+        lista.innerHTML = '<p class="modal-message">Nao foi possivel conectar ao servidor.</p>';
+    }
+}
+
 function atualizarSelectListas() {
     const select = document.getElementById("taskList");
     select.innerHTML = '<option value="">Quadro padrão por status</option>';
@@ -830,6 +984,25 @@ function formatarData(data) {
     return `${dia}/${mes}/${ano}`;
 }
 
+function formatarDataHora(data) {
+    if (!data) return "";
+    const valor = new Date(data);
+    if (Number.isNaN(valor.getTime())) return String(data);
+    return valor.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function formatarTipoHistorico(tipo) {
+    const labels = {
+        criacao: "Criacao de tarefa",
+        edicao: "Edicao de tarefa",
+        exclusao: "Exclusao de tarefa",
+        conclusao: "Conclusao de tarefa",
+        status: "Mudanca de status"
+    };
+
+    return labels[tipo] || "Atividade";
+}
+
 function estaVencida(tarefa) {
     const fim = tarefa.data_fim || tarefa.data_vencimento;
     if (!fim || tarefa.status === "concluido") return false;
@@ -888,7 +1061,29 @@ function escaparHtml(texto) {
     return div.innerHTML;
 }
 
-function logout() {
+function iniciarControleSessao() {
+    ["click", "keydown", "mousemove", "touchstart", "scroll"].forEach((evento) => {
+        window.addEventListener(evento, registrarAtividadeSessao, { passive: true });
+    });
+
+    clearInterval(sessionTimer);
+    sessionTimer = setInterval(() => {
+        if (sessaoExpirada()) logout("Sua sessao expirou por inatividade.");
+    }, 30000);
+}
+
+function registrarAtividadeSessao() {
+    localStorage.setItem("ultimaAtividade", String(Date.now()));
+}
+
+function sessaoExpirada() {
+    const ultimaAtividade = Number(localStorage.getItem("ultimaAtividade") || Date.now());
+    return Date.now() - ultimaAtividade > SESSION_TIMEOUT_MS;
+}
+
+function logout(mensagem = "") {
     localStorage.removeItem("usuario");
+    localStorage.removeItem("ultimaAtividade");
+    if (typeof mensagem === "string" && mensagem) sessionStorage.setItem("loginMessage", mensagem);
     window.location.href = "login.html";
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login | iNota</title>
+    <title>Recuperar senha | iNota</title>
     <link rel="stylesheet" href="Style.css">
 </head>
 <body class="auth-page">
@@ -16,33 +16,28 @@
     </a>
 
     <main class="auth-shell">
-        <section class="auth-card" aria-label="Login no iNota">
+        <section class="auth-card" aria-label="Recuperacao de senha">
             <div class="auth-heading">
-                <p class="eyebrow">Entrar</p>
-                <h1>Bem-vindo de volta ao seu espaço de tarefas.</h1>
+                <p class="eyebrow">Recuperar senha</p>
+                <h1>Receba um link temporario para voltar ao iNota.</h1>
             </div>
 
-            <form id="formLogin" class="auth-form" novalidate>
-                <label for="email">E-mail</label>
+            <form id="recoverForm" class="auth-form" novalidate>
+                <label for="email">E-mail cadastrado</label>
                 <input type="email" id="email" name="email" placeholder="voce@email.com" autocomplete="email" required>
 
-                <label for="senha">Senha</label>
-                <input type="password" id="senha" name="senha" placeholder="Sua senha" autocomplete="current-password" required>
-
-                <a class="forgot-link" href="recuperar-senha.html">Esqueci minha senha</a>
-
-                <button type="submit" class="primary-btn">Entrar</button>
+                <button type="submit" class="primary-btn">Enviar link</button>
             </form>
 
             <p id="mensagem" class="form-message" role="status" aria-live="polite"></p>
 
             <p class="auth-switch">
-                Não tem conta?
-                <a href="index.html">Cadastrar agora</a>
+                Lembrou a senha?
+                <a href="login.html">Voltar para login</a>
             </p>
         </section>
     </main>
 
-    <script src="login.js"></script>
+    <script src="recuperar-senha.js"></script>
 </body>
 </html>

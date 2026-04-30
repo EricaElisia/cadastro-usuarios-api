@@ -37,6 +37,8 @@
                     <strong id="boasVindas">Olá</strong>
                 </div>
             </div>
+            <button id="profileBtn" class="ghost-btn" type="button">Perfil</button>
+            <button id="historyBtn" class="ghost-btn" type="button">Historico</button>
             <button id="logoutBtn" class="ghost-btn" type="button">Sair</button>
         </div>
     </header>
@@ -90,6 +92,8 @@
                 </div>
             </div>
         </section>
+
+        <section id="deadlineAlerts" class="deadline-alerts" hidden aria-live="polite"></section>
 
         <section id="kanbanBoard" class="kanban" aria-label="Quadro Kanban">
             <article class="kanban-column" data-status="pendente">
@@ -277,6 +281,46 @@
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div id="profileModal" class="modal" aria-hidden="true">
+        <div class="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+            <button class="icon-btn close-modal" type="button" data-close-modal>&times;</button>
+            <p class="eyebrow">Perfil</p>
+            <h2 id="profileTitle">Meus dados</h2>
+            <form id="profileForm" class="modal-form">
+                <label for="profileName">Nome</label>
+                <input type="text" id="profileName" required>
+
+                <label for="profileEmail">E-mail</label>
+                <input type="email" id="profileEmail" disabled>
+
+                <label for="profilePassword">Nova senha opcional</label>
+                <input type="password" id="profilePassword" placeholder="Minimo de 8 caracteres">
+
+                <label for="profilePassword2">Confirmar nova senha</label>
+                <input type="password" id="profilePassword2" placeholder="Repita a nova senha">
+
+                <p id="profileMessage" class="modal-message"></p>
+
+                <div class="modal-actions">
+                    <button class="ghost-btn" type="button" data-close-modal>Cancelar</button>
+                    <button class="primary-btn" type="submit">Salvar perfil</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+            <button class="icon-btn close-modal" type="button" data-close-modal>&times;</button>
+            <p class="eyebrow">Atividades</p>
+            <h2 id="historyTitle">Historico recente</h2>
+            <div id="historyList" class="history-list"></div>
+            <div class="modal-actions">
+                <button class="primary-btn" type="button" data-close-modal>Fechar</button>
+            </div>
         </div>
     </div>
 

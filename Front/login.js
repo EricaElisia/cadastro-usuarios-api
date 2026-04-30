@@ -8,6 +8,12 @@ function mostrarMensagem(texto, tipo) {
     mensagem.className = `form-message ${tipo}`;
 }
 
+const mensagemSessao = sessionStorage.getItem("loginMessage");
+if (mensagemSessao) {
+    mostrarMensagem(mensagemSessao, "error");
+    sessionStorage.removeItem("loginMessage");
+}
+
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -39,6 +45,7 @@ form.addEventListener("submit", async (event) => {
         }
 
         localStorage.setItem("usuario", JSON.stringify(dados.usuario));
+        localStorage.setItem("ultimaAtividade", String(Date.now()));
         mostrarMensagem(dados.mensagem || "Login realizado com sucesso.", "success");
         window.location.href = "dashboard.html";
     } catch (erro) {

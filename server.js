@@ -2,7 +2,15 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const path = require("path");
+const crypto = require("crypto");
 const db = require("./db");
+
+let nodemailer = null;
+try {
+    nodemailer = require("nodemailer");
+} catch (erro) {
+    nodemailer = null;
+}
 
 const app = express();
 const PORT = 3000;
@@ -10,6 +18,8 @@ const PORT = 3000;
 const STATUS_VALIDOS = ["pendente", "em andamento", "concluido", "concluida"];
 const PRIORIDADES_VALIDAS = ["baixa", "media", "alta"];
 const colunasCache = {};
+const APP_URL = process.env.APP_URL || "http://localhost:3000";
+const RESET_TOKEN_MINUTOS = 15;
 
 app.use(express.json());
 app.use(cors());
@@ -228,6 +238,80 @@ async function colunasLista() {
     };
 }
 
+async function registrarErro(origem, erro) {
+    console.error(origem, erro);
+
+    try {
+        if (!(await tabelaExiste("logs_erros"))) return;
+        await query(
+            "INSERT INTO logs_erros (origem, mensagem, stack) VALUES (?, ?, ?)",
+            [origem, erro.message || String(erro), erro.stack || null]
+        );
+    } catch (falhaLog) {
+        console.error("Erro ao gravar log:", falhaLog);
+    }
+}
+
+async function registrarHistorico(idUsuario, tipo, idTarefa, descricao) {
+    try {
+        if (!(await tabelaExiste("historico_atividades"))) return;
+        await query(
+            "INSERT INTO historico_atividades (id_usuario, id_tarefa, tipo_acao, descricao) VALUES (?, ?, ?, ?)",
+            [idUsuario, idTarefa || null, tipo, descricao]
+        );
+    } catch (erro) {
+        await registrarErro("historico_atividades", erro);
+    }
+}
+
+function tokenHash(token) {
+    return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function enviarEmailRecuperacao(email, nome, link) {
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+
+    if (!nodemailer || !smtpUser || !smtpPass) {
+        console.log("Link de redefinição de senha:", link);
+        return { enviado: false, modo: "console" };
+    }
+
+    const transport = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: smtpUser,
+            pass: smtpPass
+        }
+    });
+
+    await transport.sendMail({
+        from: `"iNota" <${smtpUser}>`,
+        to: email,
+        subject: "Redefinição de senha - iNota",
+        html: `
+            <p>Olá, ${nome || "usuário"}.</p>
+            <p>Recebemos uma solicitação para redefinir sua senha no iNota.</p>
+            <p>Este link é válido por ${RESET_TOKEN_MINUTOS} minutos:</p>
+            <p><a href="${link}">${link}</a></p>
+            <p>Se você não solicitou isso, ignore este e-mail.</p>
+        `
+    });
+
+    return { enviado: true, modo: "email" };
+}
+
+function validarSenha(senha) {
+    if (!senha || senha.length < 8) return "A senha precisa ter no minimo 8 caracteres.";
+    return "";
+}
+
+function validarNome(nome) {
+    if (!nome || !nome.trim()) return "Nome e obrigatorio.";
+    if (nome.trim().length < 3) return "Nome precisa ter pelo menos 3 caracteres.";
+    return "";
+}
+
 app.get("/", (req, res) => {
     res.json({ mensagem: "API do iNota funcionando!" });
 });
@@ -312,6 +396,191 @@ app.post("/login", async (req, res) => {
     }
 });
 
+app.post("/recuperar-senha", async (req, res) => {
+    const { email } = req.body;
+    const respostaGenerica = {
+        mensagem: "Se o e-mail estiver cadastrado, enviaremos um link valido por 15 minutos."
+    };
+
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+        return res.json(respostaGenerica);
+    }
+
+    try {
+        const usuarios = await query("SELECT id_usuario, nome, email FROM usuarios WHERE email = ?", [
+            email.trim().toLowerCase()
+        ]);
+
+        if (usuarios.length === 0) {
+            return res.json(respostaGenerica);
+        }
+
+        if (!(await tabelaExiste("recuperacao_senhas"))) {
+            return res.status(500).json({ erro: "Tabela de recuperacao de senha ausente. Rode o SQL informado." });
+        }
+
+        const usuario = usuarios[0];
+        const token = crypto.randomBytes(32).toString("hex");
+        const hash = tokenHash(token);
+        const link = `${APP_URL}/redefinir-senha.html?token=${token}`;
+
+        await query(
+            "INSERT INTO recuperacao_senhas (id_usuario, token_hash, expira_em) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))",
+            [usuario.id_usuario, hash, RESET_TOKEN_MINUTOS]
+        );
+
+        await enviarEmailRecuperacao(usuario.email, usuario.nome, link);
+        res.json(respostaGenerica);
+    } catch (erro) {
+        await registrarErro("recuperar-senha", erro);
+        res.status(500).json({ erro: "Nao foi possivel solicitar a recuperacao agora." });
+    }
+});
+
+app.post("/redefinir-senha", async (req, res) => {
+    const { token, senha, senha2 } = req.body;
+    const erroSenha = validarSenha(senha);
+
+    if (!token) return res.status(400).json({ erro: "Token ausente." });
+    if (erroSenha) return res.status(400).json({ erro: erroSenha });
+    if (senha !== senha2) return res.status(400).json({ erro: "As senhas nao coincidem." });
+
+    try {
+        if (!(await tabelaExiste("recuperacao_senhas"))) {
+            return res.status(500).json({ erro: "Tabela de recuperacao de senha ausente. Rode o SQL informado." });
+        }
+
+        const registros = await query(
+            `SELECT r.*, u.email
+             FROM recuperacao_senhas r
+             INNER JOIN usuarios u ON u.id_usuario = r.id_usuario
+             WHERE r.token_hash = ? AND r.usado = 0 AND r.expira_em >= NOW()
+             LIMIT 1`,
+            [tokenHash(token)]
+        );
+
+        if (registros.length === 0) {
+            return res.status(400).json({ erro: "Link invalido ou expirado. Solicite uma nova recuperacao." });
+        }
+
+        const registro = registros[0];
+        const senhaHash = await bcrypt.hash(senha, 10);
+
+        await query("UPDATE usuarios SET senha = ? WHERE id_usuario = ?", [senhaHash, registro.id_usuario]);
+        await query(
+            "UPDATE recuperacao_senhas SET usado = 1, usado_em = NOW() WHERE id_recuperacao = ?",
+            [registro.id_recuperacao]
+        );
+
+        res.json({ mensagem: "Senha redefinida com sucesso. Voce ja pode entrar." });
+    } catch (erro) {
+        await registrarErro("redefinir-senha", erro);
+        res.status(500).json({ erro: "Nao foi possivel redefinir a senha agora." });
+    }
+});
+
+app.get("/usuarios/:id/perfil", async (req, res) => {
+    try {
+        const usuarios = await query(
+            "SELECT id_usuario AS id, nome, email FROM usuarios WHERE id_usuario = ?",
+            [req.params.id]
+        );
+
+        if (usuarios.length === 0) return res.status(404).json({ erro: "Usuario nao encontrado." });
+        res.json(usuarios[0]);
+    } catch (erro) {
+        await registrarErro("perfil-get", erro);
+        res.status(500).json({ erro: "Erro ao carregar perfil." });
+    }
+});
+
+app.put("/usuarios/:id/perfil", async (req, res) => {
+    const { nome, senha, senha2 } = req.body;
+    const erroNome = validarNome(nome);
+
+    if (erroNome) return res.status(400).json({ erro: erroNome });
+    if (senha || senha2) {
+        const erroSenha = validarSenha(senha);
+        if (erroSenha) return res.status(400).json({ erro: erroSenha });
+        if (senha !== senha2) return res.status(400).json({ erro: "As senhas nao coincidem." });
+    }
+
+    try {
+        const usuarios = await query("SELECT id_usuario, email FROM usuarios WHERE id_usuario = ?", [req.params.id]);
+        if (usuarios.length === 0) return res.status(404).json({ erro: "Usuario nao encontrado." });
+
+        if (senha) {
+            const senhaHash = await bcrypt.hash(senha, 10);
+            await query("UPDATE usuarios SET nome = ?, senha = ? WHERE id_usuario = ?", [
+                nome.trim(),
+                senhaHash,
+                req.params.id
+            ]);
+        } else {
+            await query("UPDATE usuarios SET nome = ? WHERE id_usuario = ?", [nome.trim(), req.params.id]);
+        }
+
+        res.json({
+            mensagem: "Perfil atualizado com sucesso.",
+            usuario: { id: Number(req.params.id), nome: nome.trim(), email: usuarios[0].email }
+        });
+    } catch (erro) {
+        await registrarErro("perfil-put", erro);
+        res.status(500).json({ erro: "Erro ao atualizar perfil." });
+    }
+});
+
+app.get("/notificacoes/:id_usuario", async (req, res) => {
+    const { id_usuario } = req.params;
+
+    try {
+        const temDataFim = await colunaExiste("tarefas", "data_fim");
+        const temHoraFim = await colunaExiste("tarefas", "hora_fim");
+        const campoData = temDataFim ? "COALESCE(data_fim, data_vencimento)" : "data_vencimento";
+        const campoDataHora = temHoraFim
+            ? `STR_TO_DATE(CONCAT(${campoData}, ' ', COALESCE(hora_fim, '23:59:59')), '%Y-%m-%d %H:%i:%s')`
+            : `STR_TO_DATE(CONCAT(${campoData}, ' 23:59:59'), '%Y-%m-%d %H:%i:%s')`;
+
+        const tarefas = await query(
+            `SELECT id_tarefa, titulo, ${campoData} AS data_prazo
+             FROM tarefas
+             WHERE id_usuario = ?
+                AND status NOT IN ('concluida', 'concluido')
+                AND ${campoData} IS NOT NULL
+                AND ${campoDataHora} BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+             ORDER BY ${campoDataHora} ASC`,
+            [id_usuario]
+        );
+
+        res.json(tarefas);
+    } catch (erro) {
+        await registrarErro("notificacoes", erro);
+        res.status(500).json({ erro: "Erro ao carregar notificacoes." });
+    }
+});
+
+app.get("/historico/:id_usuario", async (req, res) => {
+    const { id_usuario } = req.params;
+
+    try {
+        if (!(await tabelaExiste("historico_atividades"))) return res.json([]);
+
+        const historico = await query(
+            `SELECT id_historico, id_tarefa, tipo_acao, descricao, criado_em
+             FROM historico_atividades
+             WHERE id_usuario = ?
+             ORDER BY criado_em DESC
+             LIMIT 80`,
+            [id_usuario]
+        );
+
+        res.json(historico);
+    } catch (erro) {
+        await registrarErro("historico-get", erro);
+        res.status(500).json({ erro: "Erro ao carregar historico." });
+    }
+});
+
 app.post("/tarefas", async (req, res) => {
     const { titulo, descricao, prioridade, status, id_usuario } = req.body;
     const periodo = dadosPeriodo(req.body);
@@ -352,9 +621,10 @@ app.post("/tarefas", async (req, res) => {
         );
 
         const tarefas = await query("SELECT * FROM tarefas WHERE id_tarefa = ?", [resultado.insertId]);
+        await registrarHistorico(id_usuario, "criacao", resultado.insertId, `Tarefa criada: ${titulo.trim()}`);
         res.status(201).json({ mensagem: "Tarefa criada com sucesso.", tarefa: tarefas[0] });
     } catch (erro) {
-        console.error("Erro ao criar tarefa:", erro);
+        await registrarErro("tarefas-post", erro);
         res.status(500).json({ erro: "Erro ao criar tarefa." });
     }
 });
@@ -448,9 +718,16 @@ async function atualizarTarefa(req, res) {
         );
 
         const atualizadas = await query("SELECT * FROM tarefas WHERE id_tarefa = ?", [id]);
+        const concluiuAgora = statusNormalizado === "concluido" && normalizarStatus(tarefa.status) !== "concluido";
+        await registrarHistorico(
+            id_usuario,
+            concluiuAgora ? "conclusao" : "edicao",
+            id,
+            concluiuAgora ? `Tarefa concluida: ${titulo.trim()}` : `Tarefa editada: ${titulo.trim()}`
+        );
         res.json({ mensagem: "Tarefa atualizada com sucesso.", tarefa: atualizadas[0] });
     } catch (erro) {
-        console.error("Erro ao atualizar tarefa:", erro);
+        await registrarErro("tarefas-put", erro);
         res.status(500).json({ erro: "Erro ao atualizar tarefa." });
     }
 }
@@ -490,9 +767,16 @@ async function atualizarStatus(req, res) {
             params
         );
 
+        const concluiuAgora = statusNormalizado === "concluido" && normalizarStatus(tarefa.status) !== "concluido";
+        await registrarHistorico(
+            id_usuario,
+            concluiuAgora ? "conclusao" : "status",
+            id,
+            concluiuAgora ? `Tarefa concluida: ${tarefa.titulo}` : `Status alterado para ${statusNormalizado}: ${tarefa.titulo}`
+        );
         res.json({ mensagem: "Status atualizado com sucesso." });
     } catch (erro) {
-        console.error("Erro ao atualizar status:", erro);
+        await registrarErro("tarefas-status", erro);
         res.status(500).json({ erro: "Erro ao atualizar status." });
     }
 }
@@ -510,9 +794,10 @@ app.delete("/tarefas/:id", async (req, res) => {
         if (!tarefa) return res.status(404).json({ erro: "Tarefa não encontrada para este usuário." });
 
         await query("DELETE FROM tarefas WHERE id_tarefa = ? AND id_usuario = ?", [id, idUsuario]);
+        await registrarHistorico(idUsuario, "exclusao", null, `Tarefa excluida: ${tarefa.titulo}`);
         res.json({ mensagem: "Tarefa excluída com sucesso." });
     } catch (erro) {
-        console.error("Erro ao excluir tarefa:", erro);
+        await registrarErro("tarefas-delete", erro);
         res.status(500).json({ erro: "Erro ao excluir tarefa." });
     }
 });
