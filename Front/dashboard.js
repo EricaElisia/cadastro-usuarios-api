@@ -85,6 +85,7 @@ function prepararEventos() {
         radio.addEventListener("change", atualizarModoData);
     });
     document.getElementById("taskStartDate").addEventListener("change", atualizarDataFimMinima);
+    document.getElementById("taskReminderActive").addEventListener("change", atualizarCamposLembrete);
 
     document.querySelectorAll("[data-close-modal]").forEach((button) => {
         button.addEventListener("click", fecharModais);
@@ -272,6 +273,10 @@ function criarCardTarefa(tarefa) {
         footer.appendChild(criarMeta("Concluída", formatarData(tarefa.data_conclusao)));
     }
 
+    if (tarefa.lembrete_ativo) {
+        footer.appendChild(criarMeta("Lembrete", textoLembrete(tarefa)));
+    }
+
     card.appendChild(footer);
     return card;
 }
@@ -344,6 +349,11 @@ function abrirFormularioTarefa(tarefa = null) {
     document.getElementById("taskPrioridade").value = tarefa ? tarefa.prioridade || "baixa" : "baixa";
     document.getElementById("taskStatus").value = tarefa ? tarefa.status : "pendente";
     document.getElementById("taskList").value = tarefa ? tarefa.id_lista || "" : "";
+    document.getElementById("taskReminderActive").checked = tarefa ? Boolean(Number(tarefa.lembrete_ativo)) : false;
+    document.getElementById("taskReminderReference").value = tarefa ? tarefa.lembrete_referencia || "fim" : "fim";
+    document.getElementById("taskReminderQuantity").value = tarefa && tarefa.lembrete_quantidade ? tarefa.lembrete_quantidade : "";
+    document.getElementById("taskReminderUnit").value = tarefa ? tarefa.lembrete_unidade || "horas" : "horas";
+    atualizarCamposLembrete();
     modalTitle.textContent = tarefa ? "Editar tarefa" : "Nova tarefa";
 
     abrirModal("taskModal");
@@ -364,6 +374,10 @@ async function salvarTarefa(event) {
     const prioridade = document.getElementById("taskPrioridade").value;
     const status = document.getElementById("taskStatus").value;
     const id_lista = document.getElementById("taskList").value || null;
+    const lembrete_ativo = document.getElementById("taskReminderActive").checked;
+    const lembrete_referencia = document.getElementById("taskReminderReference").value;
+    const lembrete_quantidade = document.getElementById("taskReminderQuantity").value;
+    const lembrete_unidade = document.getElementById("taskReminderUnit").value;
     const mensagem = document.getElementById("taskFormMessage");
 
     if (!titulo) {
@@ -374,6 +388,12 @@ async function salvarTarefa(event) {
     const erroPeriodo = validarPeriodo(data_inicio, data_fim, hora_inicio, hora_fim, dia_inteiro);
     if (erroPeriodo) {
         mensagem.textContent = erroPeriodo;
+        return;
+    }
+
+    const erroLembrete = validarLembrete(lembrete_ativo, lembrete_referencia, lembrete_quantidade, data_inicio, data_fim);
+    if (erroLembrete) {
+        mensagem.textContent = erroLembrete;
         return;
     }
 
@@ -393,6 +413,10 @@ async function salvarTarefa(event) {
                 prioridade,
                 status,
                 id_lista,
+                lembrete_ativo,
+                lembrete_referencia,
+                lembrete_quantidade: lembrete_ativo ? Number(lembrete_quantidade) : null,
+                lembrete_unidade,
                 id_usuario: usuario.id
             })
         });
@@ -507,6 +531,10 @@ function abrirDetalhes(tarefa) {
 
     if (tarefa.data_conclusao) {
         meta.appendChild(criarMeta("Concluída", formatarData(tarefa.data_conclusao)));
+    }
+
+    if (tarefa.lembrete_ativo) {
+        meta.appendChild(criarMeta("Lembrete", textoLembrete(tarefa)));
     }
 
     abrirModal("detailsModal");
@@ -893,6 +921,11 @@ function atualizarModoData() {
     }
 }
 
+function atualizarCamposLembrete() {
+    const ativo = document.getElementById("taskReminderActive").checked;
+    document.getElementById("reminderFields").hidden = !ativo;
+}
+
 function atualizarDataFimMinima() {
     const inicio = document.getElementById("taskStartDate").value;
     document.getElementById("taskEndDate").setAttribute("min", inicio || hojeISO());
@@ -948,7 +981,11 @@ function normalizarTarefa(tarefa) {
         hora_fim: tarefa.hora_fim ? String(tarefa.hora_fim).slice(0, 5) : "",
         dia_inteiro: tarefa.dia_inteiro === undefined || tarefa.dia_inteiro === null ? true : Boolean(Number(tarefa.dia_inteiro)),
         data_vencimento: tarefa.data_vencimento ? String(tarefa.data_vencimento).slice(0, 10) : "",
-        data_conclusao: tarefa.data_conclusao ? String(tarefa.data_conclusao).slice(0, 10) : ""
+        data_conclusao: tarefa.data_conclusao ? String(tarefa.data_conclusao).slice(0, 10) : "",
+        lembrete_ativo: tarefa.lembrete_ativo === undefined || tarefa.lembrete_ativo === null ? false : Boolean(Number(tarefa.lembrete_ativo)),
+        lembrete_referencia: tarefa.lembrete_referencia || "fim",
+        lembrete_quantidade: tarefa.lembrete_quantidade || "",
+        lembrete_unidade: tarefa.lembrete_unidade || "horas"
     };
 }
 
@@ -1019,6 +1056,32 @@ function validarPeriodo(dataInicio, dataFim, horaInicio, horaFim, diaInteiro) {
     }
 
     return "";
+}
+
+function validarLembrete(ativo, referencia, quantidade, dataInicio, dataFim) {
+    if (!ativo) return "";
+    const valor = Number(quantidade);
+
+    if (!Number.isFinite(valor) || valor <= 0) {
+        return "Informe quanto tempo antes deseja receber o lembrete.";
+    }
+
+    if (referencia === "inicio" && !dataInicio) {
+        return "Para lembrar antes do inicio, informe a data de inicio.";
+    }
+
+    if (referencia === "fim" && !dataFim) {
+        return "Para lembrar antes do fim, informe a data de fim.";
+    }
+
+    return "";
+}
+
+function textoLembrete(tarefa) {
+    const referencia = tarefa.lembrete_referencia === "inicio" ? "inicio" : "fim";
+    const quantidade = tarefa.lembrete_quantidade || "";
+    const unidade = tarefa.lembrete_unidade || "horas";
+    return `${quantidade} ${unidade} antes do ${referencia}`;
 }
 
 function formatarHorario(tarefa) {

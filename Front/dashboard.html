@@ -18,7 +18,7 @@
 
     <header class="app-header">
         <div class="brand">
-            <img src="assets/logo.svg" alt="Logo iNota" class="brand-logo">
+            <img src="assets/logo-cropped.png" alt="Logo iNota" class="brand-logo">
             <div>
                 <strong>iNota</strong>
                 <span>Quadro de tarefas</span>
@@ -198,6 +198,35 @@
                 <select id="taskList">
                     <option value="">Quadro padrão por status</option>
                 </select>
+
+                <div class="reminder-box">
+                    <label class="radio-option reminder-toggle">
+                        <input type="checkbox" id="taskReminderActive">
+                        <span>Receber lembrete por e-mail</span>
+                    </label>
+
+                    <div id="reminderFields" class="form-grid" hidden>
+                        <div>
+                            <label for="taskReminderReference">Quando lembrar</label>
+                            <select id="taskReminderReference">
+                                <option value="fim">Antes da tarefa terminar</option>
+                                <option value="inicio">Antes da tarefa começar</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="taskReminderQuantity">Tempo antes</label>
+                            <input type="number" id="taskReminderQuantity" min="1" max="365" placeholder="Ex.: 2">
+                        </div>
+                        <div>
+                            <label for="taskReminderUnit">Unidade</label>
+                            <select id="taskReminderUnit">
+                                <option value="minutos">Minutos</option>
+                                <option value="horas" selected>Horas</option>
+                                <option value="dias">Dias</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
 
                 <p id="taskFormMessage" class="modal-message"></p>
 

@@ -166,6 +166,8 @@ button {
     width: 46px;
     height: 46px;
     border-radius: 15px;
+    object-fit: cover;
+    object-position: center;
     box-shadow: 0 14px 30px rgba(37, 99, 235, 0.22);
 }
 
@@ -815,6 +817,23 @@ button {
 .radio-option input {
     width: auto;
     min-height: 0;
+}
+
+.reminder-box {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--soft), transparent 22%);
+}
+
+.reminder-toggle {
+    width: fit-content;
+}
+
+#reminderFields[hidden] {
+    display: none;
 }
 
 .modal-actions {

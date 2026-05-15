@@ -20,6 +20,8 @@ const PRIORIDADES_VALIDAS = ["baixa", "media", "alta"];
 const colunasCache = {};
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 const RESET_TOKEN_MINUTOS = 15;
+const LEMBRETE_CHECK_MS = 60 * 1000;
+let verificandoLembretes = false;
 
 app.use(express.json());
 app.use(cors());
@@ -191,6 +193,8 @@ async function aplicarCamposOpcionais(colunas, valores, body) {
         colunas.push("dia_inteiro");
         valores.push(periodo.diaInteiro ? 1 : 0);
     }
+
+    await aplicarCamposLembrete(colunas, valores, body);
 }
 
 async function aplicarSetsOpcionais(sets, params, body) {
@@ -224,6 +228,100 @@ async function aplicarSetsOpcionais(sets, params, body) {
     if (await colunaExiste("tarefas", "dia_inteiro")) {
         sets.push("dia_inteiro = ?");
         params.push(periodo.diaInteiro ? 1 : 0);
+    }
+
+    await aplicarSetsLembrete(sets, params, body);
+}
+
+function dadosLembrete(body) {
+    const ativo = body.lembrete_ativo === true || body.lembrete_ativo === "true" || body.lembrete_ativo === 1 || body.lembrete_ativo === "1";
+    const referencia = body.lembrete_referencia === "inicio" ? "inicio" : "fim";
+    const quantidade = Number(body.lembrete_quantidade || 0);
+    const unidade = ["minutos", "horas", "dias"].includes(body.lembrete_unidade) ? body.lembrete_unidade : "horas";
+
+    if (!ativo) {
+        return { ativo: false, referencia: "fim", quantidade: null, unidade: "horas", minutos: null };
+    }
+
+    const multiplicadores = { minutos: 1, horas: 60, dias: 1440 };
+    const minutos = Math.round(quantidade * multiplicadores[unidade]);
+
+    return { ativo, referencia, quantidade, unidade, minutos };
+}
+
+function validarLembrete(body, periodo) {
+    const lembrete = dadosLembrete(body);
+    if (!lembrete.ativo) return "";
+    if (!Number.isFinite(lembrete.quantidade) || lembrete.quantidade <= 0) return "Informe quanto tempo antes deseja receber o lembrete.";
+    if (lembrete.quantidade > 365) return "O tempo do lembrete ficou alto demais.";
+    if (lembrete.referencia === "inicio" && !periodo.dataInicio) return "Para lembrar antes do inicio, informe a data de inicio.";
+    if (lembrete.referencia === "fim" && !periodo.dataFim) return "Para lembrar antes do fim, informe a data de fim.";
+    return "";
+}
+
+async function aplicarCamposLembrete(colunas, valores, body) {
+    const lembrete = dadosLembrete(body);
+
+    if (await colunaExiste("tarefas", "lembrete_ativo")) {
+        colunas.push("lembrete_ativo");
+        valores.push(lembrete.ativo ? 1 : 0);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_referencia")) {
+        colunas.push("lembrete_referencia");
+        valores.push(lembrete.referencia);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_quantidade")) {
+        colunas.push("lembrete_quantidade");
+        valores.push(lembrete.quantidade);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_unidade")) {
+        colunas.push("lembrete_unidade");
+        valores.push(lembrete.unidade);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_minutos")) {
+        colunas.push("lembrete_minutos");
+        valores.push(lembrete.minutos);
+    }
+}
+
+async function aplicarSetsLembrete(sets, params, body) {
+    const lembrete = dadosLembrete(body);
+
+    if (await colunaExiste("tarefas", "lembrete_ativo")) {
+        sets.push("lembrete_ativo = ?");
+        params.push(lembrete.ativo ? 1 : 0);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_referencia")) {
+        sets.push("lembrete_referencia = ?");
+        params.push(lembrete.referencia);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_quantidade")) {
+        sets.push("lembrete_quantidade = ?");
+        params.push(lembrete.quantidade);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_unidade")) {
+        sets.push("lembrete_unidade = ?");
+        params.push(lembrete.unidade);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_minutos")) {
+        sets.push("lembrete_minutos = ?");
+        params.push(lembrete.minutos);
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_enviado")) {
+        sets.push("lembrete_enviado = 0");
+    }
+
+    if (await colunaExiste("tarefas", "lembrete_enviado_em")) {
+        sets.push("lembrete_enviado_em = NULL");
     }
 }
 
@@ -301,6 +399,48 @@ async function enviarEmailRecuperacao(email, nome, link) {
     return { enviado: true, modo: "email" };
 }
 
+async function criarTransportEmail() {
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+
+    if (!nodemailer || !smtpUser || !smtpPass) return null;
+
+    return nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: smtpUser,
+            pass: smtpPass
+        }
+    });
+}
+
+async function enviarEmailLembrete(tarefa) {
+    const transport = await criarTransportEmail();
+    const destino = tarefa.email;
+    const referencia = tarefa.lembrete_referencia === "inicio" ? "comecar" : "terminar";
+    const prazo = tarefa.data_referencia ? new Date(tarefa.data_referencia).toLocaleString("pt-BR") : "sem horario definido";
+
+    if (!transport) {
+        console.log(`Lembrete de tarefa para ${destino}: "${tarefa.titulo}" perto de ${referencia} em ${prazo}`);
+        return { enviado: false, modo: "console" };
+    }
+
+    await transport.sendMail({
+        from: `"iNota" <${process.env.SMTP_USER}>`,
+        to: destino,
+        subject: `Lembrete iNota: ${tarefa.titulo}`,
+        html: `
+            <p>Ola, ${tarefa.nome || "usuario"}.</p>
+            <p>Sua tarefa <strong>${tarefa.titulo}</strong> esta perto de ${referencia}.</p>
+            <p><strong>Prazo:</strong> ${prazo}</p>
+            ${tarefa.descricao ? `<p><strong>Descricao:</strong> ${tarefa.descricao}</p>` : ""}
+            <p>Acesse o iNota para acompanhar seu quadro.</p>
+        `
+    });
+
+    return { enviado: true, modo: "email" };
+}
+
 function validarSenha(senha) {
     if (!senha || senha.length < 8) return "A senha precisa ter no minimo 8 caracteres.";
     return "";
@@ -310,6 +450,88 @@ function validarNome(nome) {
     if (!nome || !nome.trim()) return "Nome e obrigatorio.";
     if (nome.trim().length < 3) return "Nome precisa ter pelo menos 3 caracteres.";
     return "";
+}
+
+async function verificarLembretesDeTarefas() {
+    if (verificandoLembretes) return;
+    verificandoLembretes = true;
+
+    try {
+        const colunasNecessarias = [
+            "lembrete_ativo",
+            "lembrete_referencia",
+            "lembrete_minutos",
+            "lembrete_enviado"
+        ];
+
+        for (const coluna of colunasNecessarias) {
+            if (!(await colunaExiste("tarefas", coluna))) {
+                verificandoLembretes = false;
+                return;
+            }
+        }
+
+        const temDataInicio = await colunaExiste("tarefas", "data_inicio");
+        const temDataFim = await colunaExiste("tarefas", "data_fim");
+        const temHoraInicio = await colunaExiste("tarefas", "hora_inicio");
+        const temHoraFim = await colunaExiste("tarefas", "hora_fim");
+
+        const dataInicio = temDataInicio ? "data_inicio" : "data_vencimento";
+        const dataFim = temDataFim ? "COALESCE(data_fim, data_vencimento)" : "data_vencimento";
+        const horaInicio = temHoraInicio ? "COALESCE(hora_inicio, '00:00:00')" : "'00:00:00'";
+        const horaFim = temHoraFim ? "COALESCE(hora_fim, '23:59:59')" : "'23:59:59'";
+        const dataReferencia = `CASE
+            WHEN t.lembrete_referencia = 'inicio'
+                THEN STR_TO_DATE(CONCAT(${dataInicio}, ' ', ${horaInicio}), '%Y-%m-%d %H:%i:%s')
+            ELSE STR_TO_DATE(CONCAT(${dataFim}, ' ', ${horaFim}), '%Y-%m-%d %H:%i:%s')
+        END`;
+
+        const tarefas = await query(
+            `SELECT
+                t.id_tarefa,
+                t.id_usuario,
+                t.titulo,
+                t.descricao,
+                t.lembrete_referencia,
+                u.nome,
+                u.email,
+                ${dataReferencia} AS data_referencia
+             FROM tarefas t
+             INNER JOIN usuarios u ON u.id_usuario = t.id_usuario
+             WHERE t.lembrete_ativo = 1
+                AND t.lembrete_enviado = 0
+                AND t.status NOT IN ('concluida', 'concluido')
+                AND ${dataReferencia} IS NOT NULL
+                AND NOW() >= DATE_SUB(${dataReferencia}, INTERVAL t.lembrete_minutos MINUTE)
+                AND NOW() <= DATE_ADD(${dataReferencia}, INTERVAL 15 MINUTE)
+             ORDER BY data_referencia ASC
+             LIMIT 20`
+        );
+
+        for (const tarefa of tarefas) {
+            try {
+                const resultadoEnvio = await enviarEmailLembrete(tarefa);
+                if (resultadoEnvio.enviado) {
+                    await query(
+                        "UPDATE tarefas SET lembrete_enviado = 1, lembrete_enviado_em = NOW() WHERE id_tarefa = ?",
+                        [tarefa.id_tarefa]
+                    );
+                    await registrarHistorico(tarefa.id_usuario, "lembrete", tarefa.id_tarefa, `Lembrete enviado: ${tarefa.titulo}`);
+                }
+            } catch (erro) {
+                await registrarErro(`lembrete-tarefa-${tarefa.id_tarefa}`, erro);
+            }
+        }
+    } catch (erro) {
+        await registrarErro("verificar-lembretes", erro);
+    } finally {
+        verificandoLembretes = false;
+    }
+}
+
+function iniciarVerificadorDeLembretes() {
+    setTimeout(verificarLembretesDeTarefas, 3000);
+    setInterval(verificarLembretesDeTarefas, LEMBRETE_CHECK_MS);
 }
 
 app.get("/", (req, res) => {
@@ -601,6 +823,9 @@ app.post("/tarefas", async (req, res) => {
     );
     if (erroPeriodo) return res.status(400).json({ erro: erroPeriodo });
 
+    const erroLembrete = validarLembrete(req.body, periodo);
+    if (erroLembrete) return res.status(400).json({ erro: erroLembrete });
+
     try {
         const colunas = ["titulo", "descricao", "data_vencimento", "prioridade", "status", "id_usuario"];
         const valores = [
@@ -680,6 +905,9 @@ async function atualizarTarefa(req, res) {
         periodo.diaInteiro
     );
     if (erroPeriodo) return res.status(400).json({ erro: erroPeriodo });
+
+    const erroLembrete = validarLembrete(req.body, periodo);
+    if (erroLembrete) return res.status(400).json({ erro: erroLembrete });
 
     try {
         const tarefa = await buscarTarefaDoUsuario(id, id_usuario);
@@ -971,4 +1199,5 @@ app.put("/tarefas/:id/mover", async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
+    iniciarVerificadorDeLembretes();
 });
