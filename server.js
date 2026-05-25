@@ -1,5 +1,9 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcrypt");
 const path = require("path");
 const crypto = require("crypto");
@@ -13,18 +17,64 @@ try {
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const STATUS_VALIDOS = ["pendente", "em andamento", "concluido", "concluida"];
 const PRIORIDADES_VALIDAS = ["baixa", "media", "alta"];
 const colunasCache = {};
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
+const allowedOrigins = (process.env.CORS_ORIGIN || APP_URL)
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 const RESET_TOKEN_MINUTOS = 15;
 const LEMBRETE_CHECK_MS = 60 * 1000;
 let verificandoLembretes = false;
 
-app.use(express.json());
-app.use(cors());
+app.set("trust proxy", 1);
+
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:"],
+            connectSrc: ["'self'", ...allowedOrigins],
+            objectSrc: ["'none'"],
+            baseUri: ["'self'"]
+        }
+    }
+}));
+
+app.use(express.json({ limit: "1mb" }));
+app.use(cors({
+    origin(origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error("Origem nao permitida pelo CORS."));
+    }
+}));
+
+const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { erro: "Muitas requisicoes. Aguarde um instante." }
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { erro: "Muitas tentativas. Tente novamente em alguns minutos." }
+});
+
+app.use(apiLimiter);
 
 function query(sql, params = []) {
     return new Promise((resolve, reject) => {
@@ -538,9 +588,17 @@ app.get("/", (req, res) => {
     res.json({ mensagem: "API do iNota funcionando!" });
 });
 
+app.get("/health", (req, res) => {
+    res.json({
+        status: "ok",
+        app: "iNota",
+        timestamp: new Date().toISOString()
+    });
+});
+
 app.use(express.static(path.join(__dirname, "Front")));
 
-app.post("/cadastro", async (req, res) => {
+app.post("/cadastro", authLimiter, async (req, res) => {
     const { nome, email, senha, senha2 } = req.body;
 
     if (!nome || !email || !senha || !senha2) {
@@ -581,7 +639,7 @@ app.post("/cadastro", async (req, res) => {
     }
 });
 
-app.post("/login", async (req, res) => {
+app.post("/login", authLimiter, async (req, res) => {
     const { email, senha } = req.body;
 
     if (!email || !senha) {
@@ -618,7 +676,7 @@ app.post("/login", async (req, res) => {
     }
 });
 
-app.post("/recuperar-senha", async (req, res) => {
+app.post("/recuperar-senha", authLimiter, async (req, res) => {
     const { email } = req.body;
     const respostaGenerica = {
         mensagem: "Se o e-mail estiver cadastrado, enviaremos um link valido por 15 minutos."
@@ -659,7 +717,7 @@ app.post("/recuperar-senha", async (req, res) => {
     }
 });
 
-app.post("/redefinir-senha", async (req, res) => {
+app.post("/redefinir-senha", authLimiter, async (req, res) => {
     const { token, senha, senha2 } = req.body;
     const erroSenha = validarSenha(senha);
 

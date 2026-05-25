@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:3000";
+const API_URL = window.location.port === "3000" ? window.location.origin : "http://localhost:3000";
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 const statusConfig = {
