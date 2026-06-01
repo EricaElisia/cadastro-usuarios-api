@@ -736,7 +736,7 @@ async function abrirPerfil() {
             document.getElementById("profileEmail").value = dados.email || usuario.email || "";
         }
     } catch (erro) {
-        mostrarToast("Nao foi possivel atualizar os dados do perfil agora.", "error");
+        mostrarToast("Não foi possível atualizar os dados do perfil agora.", "error");
     }
 
     abrirModal("profileModal");
@@ -761,7 +761,7 @@ async function salvarPerfil(event) {
     }
 
     if (senha !== senha2) {
-        mensagem.textContent = "As senhas nao coincidem.";
+        mensagem.textContent = "As senhas não coincidem.";
         return;
     }
 
@@ -774,7 +774,7 @@ async function salvarPerfil(event) {
         const dados = await resposta.json();
 
         if (!resposta.ok) {
-            mensagem.textContent = dados.erro || "Nao foi possivel atualizar o perfil.";
+            mensagem.textContent = dados.erro || "Não foi possível atualizar o perfil.";
             return;
         }
 
@@ -784,7 +784,7 @@ async function salvarPerfil(event) {
         fecharModais();
         mostrarToast(dados.mensagem || "Perfil atualizado.", "success");
     } catch (erro) {
-        mensagem.textContent = "Nao foi possivel conectar ao servidor.";
+        mensagem.textContent = "Não foi possível conectar ao servidor.";
     }
 }
 
@@ -828,7 +828,7 @@ async function abrirHistorico() {
         const dados = await resposta.json();
 
         if (!resposta.ok) {
-            lista.innerHTML = `<p class="modal-message">${dados.erro || "Nao foi possivel carregar o historico."}</p>`;
+            lista.innerHTML = `<p class="modal-message">${dados.erro || "Não foi possível carregar o histórico."}</p>`;
             return;
         }
 
@@ -857,7 +857,7 @@ async function abrirHistorico() {
             lista.appendChild(article);
         });
     } catch (erro) {
-        lista.innerHTML = '<p class="modal-message">Nao foi possivel conectar ao servidor.</p>';
+        lista.innerHTML = '<p class="modal-message">Não foi possível conectar ao servidor.</p>';
     }
 }
 
@@ -1030,11 +1030,11 @@ function formatarDataHora(data) {
 
 function formatarTipoHistorico(tipo) {
     const labels = {
-        criacao: "Criacao de tarefa",
-        edicao: "Edicao de tarefa",
-        exclusao: "Exclusao de tarefa",
-        conclusao: "Conclusao de tarefa",
-        status: "Mudanca de status"
+        criacao: "Criação de tarefa",
+        edicao: "Edição de tarefa",
+        exclusao: "Exclusão de tarefa",
+        conclusao: "Conclusão de tarefa",
+        status: "Mudança de status"
     };
 
     return labels[tipo] || "Atividade";
@@ -1131,7 +1131,7 @@ function iniciarControleSessao() {
 
     clearInterval(sessionTimer);
     sessionTimer = setInterval(() => {
-        if (sessaoExpirada()) logout("Sua sessao expirou por inatividade.");
+        if (sessaoExpirada()) logout("Sua sessão expirou por inatividade.");
     }, 30000);
 }
 
