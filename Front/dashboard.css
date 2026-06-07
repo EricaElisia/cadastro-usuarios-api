@@ -892,6 +892,43 @@ button {
     padding-right: 4px;
 }
 
+.history-toolbar,
+.history-pagination,
+.history-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.history-toolbar {
+    justify-content: space-between;
+    margin: 12px 0;
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+
+.history-toolbar select {
+    width: auto;
+    min-width: 92px;
+}
+
+.history-pagination {
+    justify-content: space-between;
+    margin-top: 14px;
+}
+
+.history-pagination span {
+    color: var(--muted);
+    font-weight: 900;
+}
+
+.history-pagination button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
 .history-item {
     padding: 13px 14px;
     border: 1px solid var(--line);
@@ -913,6 +950,37 @@ button {
 .history-item small {
     color: var(--muted);
     font-weight: 800;
+}
+
+.history-situation {
+    padding: 9px 10px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--primary), transparent 88%);
+    color: var(--text) !important;
+    font-weight: 800;
+}
+
+.history-actions {
+    margin-top: 10px;
+}
+
+.history-actions textarea {
+    flex: 1 1 220px;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    resize: vertical;
+    background: var(--soft);
+    color: var(--text);
+    font: inherit;
+}
+
+.history-restored {
+    padding: 8px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--success), transparent 86%);
+    color: var(--success) !important;
 }
 
 .toast-area {

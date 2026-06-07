@@ -244,6 +244,11 @@ async function aplicarCamposOpcionais(colunas, valores, body) {
         valores.push(periodo.diaInteiro ? 1 : 0);
     }
 
+    if (await colunaExiste("tarefas", "situacao_conclusao")) {
+        colunas.push("situacao_conclusao");
+        valores.push(body.situacao_conclusao ? body.situacao_conclusao.trim() : null);
+    }
+
     await aplicarCamposLembrete(colunas, valores, body);
 }
 
@@ -278,6 +283,11 @@ async function aplicarSetsOpcionais(sets, params, body) {
     if (await colunaExiste("tarefas", "dia_inteiro")) {
         sets.push("dia_inteiro = ?");
         params.push(periodo.diaInteiro ? 1 : 0);
+    }
+
+    if (await colunaExiste("tarefas", "situacao_conclusao")) {
+        sets.push("situacao_conclusao = ?");
+        params.push(body.situacao_conclusao ? body.situacao_conclusao.trim() : null);
     }
 
     await aplicarSetsLembrete(sets, params, body);
@@ -400,16 +410,86 @@ async function registrarErro(origem, erro) {
     }
 }
 
-async function registrarHistorico(idUsuario, tipo, idTarefa, descricao) {
+async function registrarHistorico(idUsuario, tipo, idTarefa, descricao, extras = {}) {
     try {
         if (!(await tabelaExiste("historico_atividades"))) return;
+        const colunas = ["id_usuario", "id_tarefa", "tipo_acao", "descricao"];
+        const valores = [idUsuario, idTarefa || null, tipo, descricao];
+
+        if (await colunaExiste("historico_atividades", "situacao")) {
+            colunas.push("situacao");
+            valores.push(extras.situacao || null);
+        }
+
+        if (await colunaExiste("historico_atividades", "tarefa_snapshot")) {
+            colunas.push("tarefa_snapshot");
+            valores.push(extras.tarefaSnapshot ? JSON.stringify(extras.tarefaSnapshot) : null);
+        }
+
+        const placeholders = colunas.map(() => "?").join(", ");
         await query(
-            "INSERT INTO historico_atividades (id_usuario, id_tarefa, tipo_acao, descricao) VALUES (?, ?, ?, ?)",
-            [idUsuario, idTarefa || null, tipo, descricao]
+            `INSERT INTO historico_atividades (${colunas.join(", ")}) VALUES (${placeholders})`,
+            valores
         );
     } catch (erro) {
         await registrarErro("historico_atividades", erro);
     }
+}
+
+async function prepararSnapshotParaRestaurar(snapshot, idUsuario) {
+    const listaOriginalExiste = snapshot.id_lista
+        ? await query("SELECT id_lista FROM listas WHERE id_lista = ? AND id_usuario = ?", [snapshot.id_lista, idUsuario])
+        : [];
+    const idListaRestaurada = listaOriginalExiste.length > 0 ? snapshot.id_lista : null;
+    const camposPermitidos = [
+        "titulo",
+        "descricao",
+        "data_vencimento",
+        "prioridade",
+        "status",
+        "id_usuario",
+        "id_lista",
+        "data_inicio",
+        "data_fim",
+        "hora_inicio",
+        "hora_fim",
+        "dia_inteiro",
+        "data_conclusao",
+        "situacao_conclusao",
+        "lembrete_ativo",
+        "lembrete_referencia",
+        "lembrete_quantidade",
+        "lembrete_unidade",
+        "lembrete_minutos",
+        "lembrete_enviado",
+        "lembrete_enviado_em"
+    ];
+    const colunas = [];
+    const valores = [];
+
+    for (const campo of camposPermitidos) {
+        if (campo !== "id_usuario" && !(await colunaExiste("tarefas", campo))) continue;
+        if (snapshot[campo] === undefined) continue;
+        colunas.push(campo);
+        valores.push(campo === "id_usuario" ? idUsuario : campo === "id_lista" ? idListaRestaurada : snapshot[campo]);
+    }
+
+    if (!colunas.includes("titulo")) {
+        colunas.push("titulo");
+        valores.push("Tarefa restaurada");
+    }
+
+    if (!colunas.includes("id_usuario")) {
+        colunas.push("id_usuario");
+        valores.push(idUsuario);
+    }
+
+    if (!colunas.includes("status")) {
+        colunas.push("status");
+        valores.push("pendente");
+    }
+
+    return { colunas, valores };
 }
 
 function tokenHash(token) {
@@ -841,23 +921,127 @@ app.get("/notificacoes/:id_usuario", async (req, res) => {
 
 app.get("/historico/:id_usuario", async (req, res) => {
     const { id_usuario } = req.params;
+    const pagina = Math.max(Number(req.query.pagina || 1), 1);
+    const porPagina = Math.min(Math.max(Number(req.query.por_pagina || 10), 1), 30);
+    const offset = (pagina - 1) * porPagina;
 
     try {
-        if (!(await tabelaExiste("historico_atividades"))) return res.json([]);
+        if (!(await tabelaExiste("historico_atividades"))) {
+            return res.json({ itens: [], paginacao: { pagina, por_pagina: porPagina, total: 0, total_paginas: 0 } });
+        }
 
-        const historico = await query(
-            `SELECT id_historico, id_tarefa, tipo_acao, descricao, criado_em
-             FROM historico_atividades
-             WHERE id_usuario = ?
-             ORDER BY criado_em DESC
-             LIMIT 80`,
+        const temSituacao = await colunaExiste("historico_atividades", "situacao");
+        const temSnapshot = await colunaExiste("historico_atividades", "tarefa_snapshot");
+        const temRestauradoEm = await colunaExiste("historico_atividades", "restaurado_em");
+        const colunasExtras = [
+            temSituacao ? "situacao" : "NULL AS situacao",
+            temSnapshot ? "tarefa_snapshot" : "NULL AS tarefa_snapshot",
+            temRestauradoEm ? "restaurado_em" : "NULL AS restaurado_em"
+        ].join(", ");
+
+        const totalResultado = await query(
+            "SELECT COUNT(*) AS total FROM historico_atividades WHERE id_usuario = ?",
             [id_usuario]
         );
 
-        res.json(historico);
+        const historico = await query(
+            `SELECT id_historico, id_tarefa, tipo_acao, descricao, criado_em, ${colunasExtras}
+             FROM historico_atividades
+             WHERE id_usuario = ?
+             ORDER BY criado_em DESC
+             LIMIT ? OFFSET ?`,
+            [id_usuario, porPagina, offset]
+        );
+
+        const total = totalResultado[0].total;
+        res.json({
+            itens: historico,
+            paginacao: {
+                pagina,
+                por_pagina: porPagina,
+                total,
+                total_paginas: Math.ceil(total / porPagina)
+            }
+        });
     } catch (erro) {
         await registrarErro("historico-get", erro);
         res.status(500).json({ erro: "Erro ao carregar historico." });
+    }
+});
+
+app.put("/historico/:id/situacao", async (req, res) => {
+    const { id } = req.params;
+    const { id_usuario, situacao } = req.body;
+
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+
+    try {
+        if (!(await colunaExiste("historico_atividades", "situacao"))) {
+            return res.status(400).json({ erro: "Rode o SQL de atualização para salvar situações no histórico." });
+        }
+
+        const historico = await query(
+            "SELECT id_historico FROM historico_atividades WHERE id_historico = ? AND id_usuario = ?",
+            [id, id_usuario]
+        );
+        if (historico.length === 0) return res.status(404).json({ erro: "Registro de histórico não encontrado." });
+
+        await query(
+            "UPDATE historico_atividades SET situacao = ? WHERE id_historico = ? AND id_usuario = ?",
+            [situacao ? situacao.trim() : null, id, id_usuario]
+        );
+
+        res.json({ mensagem: "Situação salva no histórico." });
+    } catch (erro) {
+        await registrarErro("historico-situacao", erro);
+        res.status(500).json({ erro: "Erro ao salvar situação." });
+    }
+});
+
+app.post("/historico/:id/restaurar", async (req, res) => {
+    const { id } = req.params;
+    const { id_usuario } = req.body;
+
+    if (!id_usuario) return res.status(400).json({ erro: "Usuário não informado." });
+
+    try {
+        if (!(await colunaExiste("historico_atividades", "tarefa_snapshot"))) {
+            return res.status(400).json({ erro: "Rode o SQL de atualização para restaurar tarefas excluídas." });
+        }
+
+        const temRestauradoEm = await colunaExiste("historico_atividades", "restaurado_em");
+        const restauradoSelect = temRestauradoEm ? "restaurado_em" : "NULL AS restaurado_em";
+        const registros = await query(
+            `SELECT id_historico, tipo_acao, descricao, tarefa_snapshot, ${restauradoSelect}
+             FROM historico_atividades
+             WHERE id_historico = ? AND id_usuario = ?`,
+            [id, id_usuario]
+        );
+
+        if (registros.length === 0) return res.status(404).json({ erro: "Registro de histórico não encontrado." });
+
+        const registro = registros[0];
+        if (registro.tipo_acao !== "exclusao") return res.status(400).json({ erro: "Apenas tarefas excluídas podem ser restauradas." });
+        if (registro.restaurado_em) return res.status(400).json({ erro: "Essa tarefa já foi restaurada." });
+        if (!registro.tarefa_snapshot) return res.status(400).json({ erro: "Este histórico não possui dados suficientes para restaurar." });
+
+        const snapshot = JSON.parse(registro.tarefa_snapshot);
+        const { colunas, valores } = await prepararSnapshotParaRestaurar(snapshot, id_usuario);
+        const placeholders = colunas.map(() => "?").join(", ");
+        const resultado = await query(
+            `INSERT INTO tarefas (${colunas.join(", ")}) VALUES (${placeholders})`,
+            valores
+        );
+
+        if (temRestauradoEm) {
+            await query("UPDATE historico_atividades SET restaurado_em = NOW() WHERE id_historico = ?", [id]);
+        }
+
+        await registrarHistorico(id_usuario, "restauracao", resultado.insertId, `Tarefa restaurada: ${snapshot.titulo || "sem título"}`);
+        res.json({ mensagem: "Tarefa restaurada com sucesso.", id_tarefa: resultado.insertId });
+    } catch (erro) {
+        await registrarErro("historico-restaurar", erro);
+        res.status(500).json({ erro: "Erro ao restaurar tarefa." });
     }
 });
 
@@ -1009,7 +1193,8 @@ async function atualizarTarefa(req, res) {
             id_usuario,
             concluiuAgora ? "conclusao" : "edicao",
             id,
-            concluiuAgora ? `Tarefa concluida: ${titulo.trim()}` : `Tarefa editada: ${titulo.trim()}`
+            concluiuAgora ? `Tarefa concluida em ${new Date().toLocaleString("pt-BR")}: ${titulo.trim()}` : `Tarefa editada: ${titulo.trim()}`,
+            concluiuAgora ? { situacao: req.body.situacao_conclusao || null } : {}
         );
         res.json({ mensagem: "Tarefa atualizada com sucesso.", tarefa: atualizadas[0] });
     } catch (erro) {
@@ -1058,7 +1243,8 @@ async function atualizarStatus(req, res) {
             id_usuario,
             concluiuAgora ? "conclusao" : "status",
             id,
-            concluiuAgora ? `Tarefa concluida: ${tarefa.titulo}` : `Status alterado para ${statusNormalizado}: ${tarefa.titulo}`
+            concluiuAgora ? `Tarefa concluida em ${new Date().toLocaleString("pt-BR")}: ${tarefa.titulo}` : `Status alterado para ${statusNormalizado}: ${tarefa.titulo}`,
+            concluiuAgora ? { situacao: req.body.situacao_conclusao || null } : {}
         );
         res.json({ mensagem: "Status atualizado com sucesso." });
     } catch (erro) {
@@ -1079,8 +1265,8 @@ app.delete("/tarefas/:id", async (req, res) => {
         const tarefa = await buscarTarefaDoUsuario(id, idUsuario);
         if (!tarefa) return res.status(404).json({ erro: "Tarefa não encontrada para este usuário." });
 
+        await registrarHistorico(idUsuario, "exclusao", id, `Tarefa excluida: ${tarefa.titulo}`, { tarefaSnapshot: tarefa });
         await query("DELETE FROM tarefas WHERE id_tarefa = ? AND id_usuario = ?", [id, idUsuario]);
-        await registrarHistorico(idUsuario, "exclusao", null, `Tarefa excluida: ${tarefa.titulo}`);
         res.json({ mensagem: "Tarefa excluída com sucesso." });
     } catch (erro) {
         await registrarErro("tarefas-delete", erro);

@@ -26,6 +26,8 @@ let tarefaParaExcluir = null;
 let tarefaEmDetalhe = null;
 let quadroAtual = null;
 let sessionTimer = null;
+let paginaHistorico = 1;
+let totalPaginasHistorico = 1;
 
 document.addEventListener("DOMContentLoaded", iniciarDashboard);
 
@@ -76,6 +78,9 @@ function prepararEventos() {
     document.getElementById("confirmDeleteBtn").addEventListener("click", confirmarExclusao);
     document.getElementById("detailsEditBtn").addEventListener("click", editarTarefaEmDetalhe);
     document.getElementById("clearFiltersBtn").addEventListener("click", limparFiltros);
+    document.getElementById("historyPrevBtn").addEventListener("click", () => carregarHistorico(Math.max(paginaHistorico - 1, 1)));
+    document.getElementById("historyNextBtn").addEventListener("click", () => carregarHistorico(Math.min(paginaHistorico + 1, totalPaginasHistorico)));
+    document.getElementById("historyPageSize").addEventListener("change", () => carregarHistorico(1));
 
     ["filterKeyword", "filterStatus", "filterPriority", "filterStart", "filterEnd"].forEach((id) => {
         document.getElementById(id).addEventListener("input", debounce(carregarTarefas, 350));
@@ -273,6 +278,10 @@ function criarCardTarefa(tarefa) {
         footer.appendChild(criarMeta("Concluída", formatarData(tarefa.data_conclusao)));
     }
 
+    if (tarefa.situacao_conclusao) {
+        meta.appendChild(criarMeta("Situacao", tarefa.situacao_conclusao));
+    }
+
     if (tarefa.lembrete_ativo) {
         footer.appendChild(criarMeta("Lembrete", textoLembrete(tarefa)));
     }
@@ -348,6 +357,7 @@ function abrirFormularioTarefa(tarefa = null) {
     atualizarModoData();
     document.getElementById("taskPrioridade").value = tarefa ? tarefa.prioridade || "baixa" : "baixa";
     document.getElementById("taskStatus").value = tarefa ? tarefa.status : "pendente";
+    document.getElementById("taskConclusionSituation").value = tarefa ? tarefa.situacao_conclusao || "" : "";
     document.getElementById("taskList").value = tarefa ? tarefa.id_lista || "" : "";
     document.getElementById("taskReminderActive").checked = tarefa ? Boolean(Number(tarefa.lembrete_ativo)) : false;
     document.getElementById("taskReminderReference").value = tarefa ? tarefa.lembrete_referencia || "fim" : "fim";
@@ -373,6 +383,7 @@ async function salvarTarefa(event) {
     const hora_fim = dia_inteiro ? "" : document.getElementById("taskEndTime").value;
     const prioridade = document.getElementById("taskPrioridade").value;
     const status = document.getElementById("taskStatus").value;
+    const situacao_conclusao = document.getElementById("taskConclusionSituation").value.trim();
     const id_lista = document.getElementById("taskList").value || null;
     const lembrete_ativo = document.getElementById("taskReminderActive").checked;
     const lembrete_referencia = document.getElementById("taskReminderReference").value;
@@ -412,6 +423,7 @@ async function salvarTarefa(event) {
                 dia_inteiro,
                 prioridade,
                 status,
+                situacao_conclusao,
                 id_lista,
                 lembrete_ativo,
                 lembrete_referencia,
@@ -819,12 +831,18 @@ async function carregarNotificacoes() {
 }
 
 async function abrirHistorico() {
-    const lista = document.getElementById("historyList");
-    lista.innerHTML = '<p class="details-description">Carregando historico...</p>';
+    paginaHistorico = 1;
+    await carregarHistorico(1);
     abrirModal("historyModal");
+}
+
+async function carregarHistorico(pagina = 1) {
+    const lista = document.getElementById("historyList");
+    const porPagina = Number(document.getElementById("historyPageSize").value || 10);
+    lista.innerHTML = '<p class="details-description">Carregando historico...</p>';
 
     try {
-        const resposta = await fetch(`${API_URL}/historico/${usuario.id}`);
+        const resposta = await fetch(`${API_URL}/historico/${usuario.id}?pagina=${pagina}&por_pagina=${porPagina}`);
         const dados = await resposta.json();
 
         if (!resposta.ok) {
@@ -832,32 +850,164 @@ async function abrirHistorico() {
             return;
         }
 
-        if (dados.length === 0) {
+        const itens = Array.isArray(dados) ? dados : dados.itens || [];
+        const paginacao = dados.paginacao || { pagina: 1, total_paginas: 1, total: itens.length };
+        paginaHistorico = paginacao.pagina || 1;
+        totalPaginasHistorico = Math.max(paginacao.total_paginas || 1, 1);
+        atualizarControlesHistorico(paginacao);
+
+        if (itens.length === 0) {
             lista.innerHTML = '<p class="details-description">Nenhuma atividade registrada ainda.</p>';
             return;
         }
 
         lista.innerHTML = "";
-        dados.forEach((item) => {
-            const article = document.createElement("article");
-            article.className = "history-item";
-
-            const title = document.createElement("strong");
-            title.textContent = formatarTipoHistorico(item.tipo_acao);
-
-            const desc = document.createElement("p");
-            desc.textContent = item.descricao;
-
-            const date = document.createElement("small");
-            date.textContent = formatarDataHora(item.criado_em);
-
-            article.appendChild(title);
-            article.appendChild(desc);
-            article.appendChild(date);
-            lista.appendChild(article);
-        });
+        itens.forEach((item) => lista.appendChild(criarItemHistorico(item)));
     } catch (erro) {
         lista.innerHTML = '<p class="modal-message">Não foi possível conectar ao servidor.</p>';
+    }
+}
+
+function criarItemHistorico(item) {
+    const article = document.createElement("article");
+    article.className = "history-item";
+
+    const title = document.createElement("strong");
+    title.textContent = formatarTipoHistorico(item.tipo_acao);
+
+    const desc = document.createElement("p");
+    desc.textContent = item.descricao;
+
+    const date = document.createElement("small");
+    date.textContent = formatarDataHora(item.criado_em);
+
+    article.appendChild(title);
+    article.appendChild(desc);
+    article.appendChild(date);
+
+    if (item.situacao) {
+        const situacao = document.createElement("p");
+        situacao.className = "history-situation";
+        situacao.textContent = `Situacao: ${item.situacao}`;
+        article.appendChild(situacao);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "history-actions";
+
+    if (["conclusao", "exclusao"].includes(item.tipo_acao)) {
+        const input = document.createElement("textarea");
+        input.rows = 2;
+        input.placeholder = "Adicionar situação/observação desta atividade";
+        input.value = item.situacao || "";
+
+        const salvar = document.createElement("button");
+        salvar.type = "button";
+        salvar.className = "ghost-btn";
+        salvar.textContent = "Salvar situação";
+        salvar.addEventListener("click", () => salvarSituacaoHistorico(item.id_historico, input.value));
+
+        actions.appendChild(input);
+        actions.appendChild(salvar);
+    }
+
+    if (item.tipo_acao === "exclusao" && item.tarefa_snapshot && !item.restaurado_em) {
+        const restaurar = document.createElement("button");
+        restaurar.type = "button";
+        restaurar.className = "primary-btn";
+        restaurar.textContent = "Restaurar tarefa";
+        restaurar.addEventListener("click", () => restaurarTarefaHistorico(item.id_historico));
+        actions.appendChild(restaurar);
+    }
+
+    if (item.id_tarefa && item.tipo_acao !== "exclusao") {
+        const apagar = document.createElement("button");
+        apagar.type = "button";
+        apagar.className = "danger-btn";
+        apagar.textContent = "Apagar tarefa";
+        apagar.addEventListener("click", () => apagarTarefaPeloHistorico(item.id_tarefa));
+        actions.appendChild(apagar);
+    }
+
+    if (item.restaurado_em) {
+        const restored = document.createElement("small");
+        restored.className = "history-restored";
+        restored.textContent = `Restaurada em ${formatarDataHora(item.restaurado_em)}`;
+        actions.appendChild(restored);
+    }
+
+    if (actions.children.length > 0) article.appendChild(actions);
+    return article;
+}
+
+function atualizarControlesHistorico(paginacao) {
+    document.getElementById("historyPageInfo").textContent = `Pagina ${paginaHistorico} de ${totalPaginasHistorico} - ${paginacao.total || 0} atividades`;
+    document.getElementById("historyPrevBtn").disabled = paginaHistorico <= 1;
+    document.getElementById("historyNextBtn").disabled = paginaHistorico >= totalPaginasHistorico;
+}
+
+async function salvarSituacaoHistorico(idHistorico, situacao) {
+    try {
+        const resposta = await fetch(`${API_URL}/historico/${idHistorico}/situacao`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id_usuario: usuario.id, situacao })
+        });
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            mostrarToast(dados.erro || "Nao foi possivel salvar a situacao.", "error");
+            return;
+        }
+
+        mostrarToast(dados.mensagem || "Situacao salva.", "success");
+        await carregarHistorico(paginaHistorico);
+    } catch (erro) {
+        mostrarToast("Nao foi possivel conectar ao servidor.", "error");
+    }
+}
+
+async function restaurarTarefaHistorico(idHistorico) {
+    try {
+        const resposta = await fetch(`${API_URL}/historico/${idHistorico}/restaurar`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id_usuario: usuario.id })
+        });
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            mostrarToast(dados.erro || "Nao foi possivel restaurar a tarefa.", "error");
+            return;
+        }
+
+        mostrarToast(dados.mensagem || "Tarefa restaurada.", "success");
+        await carregarTudo();
+        await carregarHistorico(paginaHistorico);
+    } catch (erro) {
+        mostrarToast("Nao foi possivel conectar ao servidor.", "error");
+    }
+}
+
+async function apagarTarefaPeloHistorico(idTarefa) {
+    try {
+        const resposta = await fetch(`${API_URL}/tarefas/${idTarefa}`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id_usuario: usuario.id })
+        });
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            mostrarToast(dados.erro || "Nao foi possivel apagar a tarefa.", "error");
+            return;
+        }
+
+        mostrarToast(dados.mensagem || "Tarefa apagada.", "success");
+        await carregarTudo();
+        await carregarHistorico(paginaHistorico);
+    } catch (erro) {
+        mostrarToast("Nao foi possivel conectar ao servidor.", "error");
     }
 }
 
@@ -982,6 +1132,7 @@ function normalizarTarefa(tarefa) {
         dia_inteiro: tarefa.dia_inteiro === undefined || tarefa.dia_inteiro === null ? true : Boolean(Number(tarefa.dia_inteiro)),
         data_vencimento: tarefa.data_vencimento ? String(tarefa.data_vencimento).slice(0, 10) : "",
         data_conclusao: tarefa.data_conclusao ? String(tarefa.data_conclusao).slice(0, 10) : "",
+        situacao_conclusao: tarefa.situacao_conclusao || "",
         lembrete_ativo: tarefa.lembrete_ativo === undefined || tarefa.lembrete_ativo === null ? false : Boolean(Number(tarefa.lembrete_ativo)),
         lembrete_referencia: tarefa.lembrete_referencia || "fim",
         lembrete_quantidade: tarefa.lembrete_quantidade || "",

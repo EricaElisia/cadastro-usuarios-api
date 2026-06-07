@@ -194,6 +194,9 @@
                     <option value="concluido">Concluído</option>
                 </select>
 
+                <label for="taskConclusionSituation">SituaÃ§Ã£o da conclusÃ£o</label>
+                <textarea id="taskConclusionSituation" rows="3" placeholder="Opcional: descreva como a tarefa foi concluÃ­da, resultado ou observaÃ§Ã£o final"></textarea>
+
                 <label for="taskList">Quadro</label>
                 <select id="taskList">
                     <option value="">Quadro padrão por status</option>
@@ -346,7 +349,20 @@
             <button class="icon-btn close-modal" type="button" data-close-modal>&times;</button>
             <p class="eyebrow">Atividades</p>
             <h2 id="historyTitle">Historico recente</h2>
+            <div class="history-toolbar">
+                <label for="historyPageSize">Atividades por pÃ¡gina</label>
+                <select id="historyPageSize">
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                </select>
+            </div>
             <div id="historyList" class="history-list"></div>
+            <div class="history-pagination">
+                <button id="historyPrevBtn" class="ghost-btn" type="button">Anterior</button>
+                <span id="historyPageInfo">PÃ¡gina 1</span>
+                <button id="historyNextBtn" class="ghost-btn" type="button">Proxima</button>
+            </div>
             <div class="modal-actions">
                 <button class="primary-btn" type="button" data-close-modal>Fechar</button>
             </div>
