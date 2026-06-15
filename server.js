@@ -436,60 +436,62 @@ async function registrarHistorico(idUsuario, tipo, idTarefa, descricao, extras =
     }
 }
 
+function formatarValorData(campo, valor) {
+    if (!valor) return null;
+
+    const texto = String(valor);
+
+    if (
+        campo === "data_vencimento" ||
+        campo === "data_inicio" ||
+        campo === "data_fim"
+    ) {
+        return texto.split("T")[0];
+    }
+
+    if (
+        campo === "data_conclusao" ||
+        campo === "lembrete_enviado_em"
+    ) {
+        return texto
+            .replace("T", " ")
+            .replace(".000Z", "");
+    }
+
+    return valor;
+}
+
 async function prepararSnapshotParaRestaurar(snapshot, idUsuario) {
-    const listaOriginalExiste = snapshot.id_lista
-        ? await query("SELECT id_lista FROM listas WHERE id_lista = ? AND id_usuario = ?", [snapshot.id_lista, idUsuario])
-        : [];
-    const idListaRestaurada = listaOriginalExiste.length > 0 ? snapshot.id_lista : null;
-    const camposPermitidos = [
-        "titulo",
-        "descricao",
-        "data_vencimento",
-        "prioridade",
-        "status",
-        "id_usuario",
-        "id_lista",
-        "data_inicio",
-        "data_fim",
-        "hora_inicio",
-        "hora_fim",
-        "dia_inteiro",
-        "data_conclusao",
-        "situacao_conclusao",
-        "lembrete_ativo",
-        "lembrete_referencia",
-        "lembrete_quantidade",
-        "lembrete_unidade",
-        "lembrete_minutos",
-        "lembrete_enviado",
-        "lembrete_enviado_em"
-    ];
     const colunas = [];
     const valores = [];
 
-    for (const campo of camposPermitidos) {
-        if (campo !== "id_usuario" && !(await colunaExiste("tarefas", campo))) continue;
-        if (snapshot[campo] === undefined) continue;
+    let idListaRestaurada = null;
+
+    for (const campo of Object.keys(snapshot)) {
+        if (campo === "id_tarefa") continue;
+
         colunas.push(campo);
-        valores.push(campo === "id_usuario" ? idUsuario : campo === "id_lista" ? idListaRestaurada : snapshot[campo]);
+
+        let valor = formatarValorData(
+            campo,
+            snapshot[campo]
+        );
+
+        if (campo === "id_usuario") {
+            valor = idUsuario;
+        }
+
+        if (campo === "id_lista") {
+            valor = idListaRestaurada;
+        }
+
+        valores.push(valor);
     }
 
-    if (!colunas.includes("titulo")) {
-        colunas.push("titulo");
-        valores.push("Tarefa restaurada");
-    }
-
-    if (!colunas.includes("id_usuario")) {
-        colunas.push("id_usuario");
-        valores.push(idUsuario);
-    }
-
-    if (!colunas.includes("status")) {
-        colunas.push("status");
-        valores.push("pendente");
-    }
-
-    return { colunas, valores };
+    return {
+        colunas,
+        valores
+    };
 }
 
 function tokenHash(token) {
@@ -1025,7 +1027,20 @@ app.post("/historico/:id/restaurar", async (req, res) => {
         if (registro.restaurado_em) return res.status(400).json({ erro: "Essa tarefa já foi restaurada." });
         if (!registro.tarefa_snapshot) return res.status(400).json({ erro: "Este histórico não possui dados suficientes para restaurar." });
 
-        const snapshot = JSON.parse(registro.tarefa_snapshot);
+
+
+        console.log("TIPO:", typeof registro.tarefa_snapshot);
+        console.log("SNAPSHOT:", registro.tarefa_snapshot);
+
+        let snapshot;
+
+        if (typeof registro.tarefa_snapshot === "string") {
+            snapshot = JSON.parse(registro.tarefa_snapshot);
+        } else {
+            snapshot = registro.tarefa_snapshot;
+        }
+
+
         const { colunas, valores } = await prepararSnapshotParaRestaurar(snapshot, id_usuario);
         const placeholders = colunas.map(() => "?").join(", ");
         const resultado = await query(
